@@ -1,0 +1,27 @@
+{
+    "name": "kanopi/wordpress-core",
+    "description": "WordPress core, mirrored from WordPress/WordPress for Composer.",
+    "type": "wordpress-core",
+    "license": "GPL-2.0-or-later",
+    "homepage": "https://wordpress.org/",
+    "keywords": [
+        "wordpress",
+        "core",
+        "cms",
+        "blog"
+    ],
+    "authors": [
+        {
+            "name": "WordPress Community",
+            "homepage": "https://wordpress.org/about/"
+        }
+    ],
+    "support": {
+        "source": "https://github.com/kanopi/wordpress-core",
+        "issues": "https://github.com/kanopi/wordpress-core/issues",
+        "docs": "https://developer.wordpress.org/"
+    },
+    "require": {
+        "php": ">=5.2.4"
+    }
+}
