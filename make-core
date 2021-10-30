@@ -1,0 +1,30 @@
+#!/bin/bash
+
+set -e
+
+TAGS=$(gh api /repos/wordpress/wordpress/tags --paginate | jq -r '.[] | (.name + "|" + .zipball_url)')
+
+[[ -d stage-content ]] && rm -rf stage-content || true
+
+git clone --quiet git@github.com:kanopi/wordpress-core stage-content
+cd stage-content
+git fetch --quiet --tags origin
+
+while IFS= read -r line; do
+    TAG=$(echo "${line}" | cut -d "|" -f1)
+    URL=$(echo "${line}" | cut -d "|" -f2)
+    VERSION_EXISTS=$(git tag | grep "^${TAG}$" | wc -l | tr -d '[:space:]')
+    if [[ "${VERSION_EXISTS}" == "0" ]]; then
+	    echo "Creating ${TAG}..."
+ 	    git checkout --quiet --orphan ${TAG}
+	    git rm --quiet -rf .
+	    cp ../README.md ./
+	    jq --arg version "${TAG}" --arg url "${URL}" '. | .source.reference |= $version | .dist.url |= $url | .version |= $version' ../composer_template.json > composer.json
+	    git add .
+	    git commit --quiet -m "Added Version: ${TAG}"
+	    git tag ${TAG}
+    fi
+done <<< "$TAGS"
+
+echo "Pushing all tags..."
+git push --tags --quiet origin
