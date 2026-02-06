@@ -190,7 +190,13 @@ fi
 SYNCED_VERSION=$(grep -o "\\\$wp_version = '[^']*'" "$PACKAGE_DIR/wp-includes/version.php" | cut -d"'" -f2)
 log_info "Successfully synced WordPress $SYNCED_VERSION"
 
-# Step 7: Git operations
+# Step 7: Remove build tooling (scripts/templates) for clean release
+if [[ "$DO_COMMIT" == true ]]; then
+    log_step "Removing build tooling for clean release..."
+    rm -rf "$PACKAGE_DIR/scripts" "$PACKAGE_DIR/templates" "$PACKAGE_DIR/README.md"
+fi
+
+# Step 8: Git operations
 if [[ "$DO_COMMIT" == true ]]; then
     log_step "Creating git commit..."
     cd "$PACKAGE_DIR"

@@ -71,11 +71,11 @@ wordpress-core/
 ├── xmlrpc.php
 ├── wp-admin/
 ├── wp-includes/
-├── wp-content/
-│   └── index.php
-├── scripts/           # Still included for reference
-└── templates/         # Still included for reference
+└── wp-content/
+    └── index.php
 ```
+
+Note: Version tags contain only WordPress files - no scripts, templates, or README.
 
 ## Scripts
 
