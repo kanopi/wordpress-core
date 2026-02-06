@@ -12,7 +12,6 @@
 #   --single X.Y.Z       Sync only a single specific version
 #   --dry-run            Show what would be done without making changes
 #   --push               Push branches and tags to remote
-#   --branch-per-major   Create a branch for each major version (e.g., 6.x)
 #
 # Examples:
 #   ./scripts/sync-all-versions.sh --min-version 6.0
@@ -62,7 +61,8 @@ usage() {
     echo "  --single X.Y.Z       Sync only a single specific version"
     echo "  --dry-run            Show what would be done without making changes"
     echo "  --push               Push branches and tags to remote"
-    echo "  --branch-per-major   Create a branch for each major version (e.g., 6.x)"
+    echo ""
+    echo "Creates a branch per major.minor version (e.g., 6.4.x, 6.5.x)"
     echo ""
     echo "Examples:"
     echo "  $0 --min-version 6.0"
@@ -77,7 +77,6 @@ MAX_VERSION=""
 SINGLE_VERSION=""
 DRY_RUN=false
 DO_PUSH=false
-BRANCH_PER_MAJOR=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -100,10 +99,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --push)
             DO_PUSH=true
-            shift
-            ;;
-        --branch-per-major)
-            BRANCH_PER_MAJOR=true
             shift
             ;;
         --help|-h)
@@ -132,9 +127,9 @@ get_major_minor() {
     echo "$1" | cut -d. -f1,2
 }
 
-# Function to get major from version
-get_major() {
-    echo "$1" | cut -d. -f1
+# Function to get branch name for a version
+get_branch_name() {
+    echo "$(get_major_minor "$1").x"
 }
 
 # Fetch all WordPress version tags from GitHub
@@ -206,13 +201,24 @@ if [[ -z "$VERSIONS_TO_SYNC" ]]; then
     exit 1
 fi
 
-log_info "Will sync $VERSION_COUNT versions"
+# Get unique branches
+BRANCHES=$(for v in $VERSIONS_TO_SYNC; do get_branch_name "$v"; done | sort -V | uniq)
+BRANCH_COUNT=$(echo "$BRANCHES" | wc -l | tr -d ' ')
+
+log_info "Will sync $VERSION_COUNT versions across $BRANCH_COUNT branches"
 
 if [[ "$DRY_RUN" == true ]]; then
     echo ""
-    echo "DRY RUN - Would sync these versions:"
-    echo "$VERSIONS_TO_SYNC" | while read -r v; do
-        echo "  - $v"
+    echo "DRY RUN - Would create these branches and versions:"
+    for branch in $BRANCHES; do
+        echo ""
+        echo "  Branch: $branch"
+        # Get versions for this branch
+        for v in $VERSIONS_TO_SYNC; do
+            if [[ "$(get_branch_name "$v")" == "$branch" ]]; then
+                echo "    - $v"
+            fi
+        done
     done
     echo ""
     exit 0
@@ -221,53 +227,69 @@ fi
 # Store current branch to return to later
 ORIGINAL_BRANCH=$(git -C "$PACKAGE_DIR" branch --show-current)
 
-# Track branches created for major versions
-declare -A MAJOR_BRANCHES
+# Backup scripts and templates since they get deleted during sync
+BACKUP_DIR=$(mktemp -d)
+cp -r "$PACKAGE_DIR/scripts" "$BACKUP_DIR/"
+cp -r "$PACKAGE_DIR/templates" "$BACKUP_DIR/"
+cp "$PACKAGE_DIR/README.md" "$BACKUP_DIR/" 2>/dev/null || true
 
-# Sync each version
+# Track results
 SYNCED_COUNT=0
 FAILED_COUNT=0
 
-for VERSION in $VERSIONS_TO_SYNC; do
-    log_version "Processing WordPress $VERSION..."
+# Process each branch
+for BRANCH_NAME in $BRANCHES; do
+    log_step "Processing branch: $BRANCH_NAME"
 
-    MAJOR=$(get_major "$VERSION")
-    MAJOR_MINOR=$(get_major_minor "$VERSION")
+    cd "$PACKAGE_DIR"
 
-    # Determine target branch
-    if [[ "$BRANCH_PER_MAJOR" == true ]]; then
-        TARGET_BRANCH="${MAJOR}.x"
+    # Check if branch exists locally or remotely
+    if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
+        git checkout "$BRANCH_NAME"
+    elif git show-ref --verify --quiet "refs/remotes/origin/$BRANCH_NAME"; then
+        git checkout -b "$BRANCH_NAME" "origin/$BRANCH_NAME"
     else
-        TARGET_BRANCH="main"
+        # Create new branch from main
+        git checkout main 2>/dev/null || git checkout -b main
+        git checkout -b "$BRANCH_NAME"
     fi
 
-    # Create/switch to branch if using per-major branches
-    if [[ "$BRANCH_PER_MAJOR" == true ]]; then
-        cd "$PACKAGE_DIR"
-
-        # Check if branch exists
-        if git show-ref --verify --quiet "refs/heads/$TARGET_BRANCH"; then
-            git checkout "$TARGET_BRANCH"
-        else
-            # Create branch from main
-            git checkout main
-            git checkout -b "$TARGET_BRANCH"
-            MAJOR_BRANCHES[$TARGET_BRANCH]=1
+    # Process each version in this branch
+    for VERSION in $VERSIONS_TO_SYNC; do
+        # Skip if this version doesn't belong to this branch
+        if [[ "$(get_branch_name "$VERSION")" != "$BRANCH_NAME" ]]; then
+            continue
         fi
-    fi
 
-    # Run the single version sync script
-    if "$SCRIPT_DIR/sync-wordpress.sh" "$VERSION" --tag; then
-        SYNCED_COUNT=$((SYNCED_COUNT + 1))
-        log_info "Successfully synced WordPress $VERSION"
-    else
-        FAILED_COUNT=$((FAILED_COUNT + 1))
-        log_error "Failed to sync WordPress $VERSION"
-    fi
+        log_version "Processing WordPress $VERSION on branch $BRANCH_NAME..."
+
+        # Restore scripts and templates (they get deleted after each sync)
+        cp -r "$BACKUP_DIR/scripts" "$PACKAGE_DIR/" 2>/dev/null || true
+        cp -r "$BACKUP_DIR/templates" "$PACKAGE_DIR/" 2>/dev/null || true
+        cp "$BACKUP_DIR/README.md" "$PACKAGE_DIR/" 2>/dev/null || true
+
+        # Run the single version sync script
+        if "$PACKAGE_DIR/scripts/sync-wordpress.sh" "$VERSION" --tag; then
+            SYNCED_COUNT=$((SYNCED_COUNT + 1))
+            log_info "Successfully synced WordPress $VERSION"
+        else
+            FAILED_COUNT=$((FAILED_COUNT + 1))
+            log_error "Failed to sync WordPress $VERSION"
+        fi
+    done
 done
 
-# Return to original branch
+# Restore scripts and templates to main branch
 cd "$PACKAGE_DIR"
+git checkout main 2>/dev/null || git checkout -b main
+cp -r "$BACKUP_DIR/scripts" "$PACKAGE_DIR/"
+cp -r "$BACKUP_DIR/templates" "$PACKAGE_DIR/"
+cp "$BACKUP_DIR/README.md" "$PACKAGE_DIR/" 2>/dev/null || true
+
+# Clean up backup
+rm -rf "$BACKUP_DIR"
+
+# Return to original branch
 git checkout "$ORIGINAL_BRANCH" 2>/dev/null || true
 
 # Push if requested
@@ -275,14 +297,13 @@ if [[ "$DO_PUSH" == true ]]; then
     log_step "Pushing to remote..."
     cd "$PACKAGE_DIR"
 
-    if [[ "$BRANCH_PER_MAJOR" == true ]]; then
-        # Push all major branches
-        for branch in "${!MAJOR_BRANCHES[@]}"; do
-            git push origin "$branch" --tags || log_warn "Failed to push $branch"
-        done
-    else
-        git push origin main --tags || log_warn "Failed to push main"
-    fi
+    # Push main branch
+    git push origin main 2>/dev/null || log_warn "Failed to push main"
+
+    # Push all version branches
+    for branch in $BRANCHES; do
+        git push origin "$branch" --tags || log_warn "Failed to push $branch"
+    done
 fi
 
 # Summary
@@ -292,10 +313,13 @@ echo "  Sync All Versions Complete"
 echo "========================================"
 echo "  Versions synced: $SYNCED_COUNT"
 echo "  Versions failed: $FAILED_COUNT"
+echo "  Branches: $BRANCH_COUNT"
 echo ""
-if [[ "$BRANCH_PER_MAJOR" == true ]]; then
-    echo "  Branches created: ${!MAJOR_BRANCHES[*]}"
-fi
+echo "  Branches created/updated:"
+for branch in $BRANCHES; do
+    echo "    - $branch"
+done
+echo ""
 if [[ "$DO_PUSH" == true ]]; then
     echo "  Changes pushed to remote"
 else
