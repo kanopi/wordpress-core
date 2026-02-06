@@ -143,12 +143,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate version format (stable, beta, RC, alpha)
-if [[ ! "$WP_VERSION" =~ ^[0-9]+\.[0-9]+((\.[0-9]+)|(-(alpha|beta|RC)[0-9]+))?$ ]]; then
+# Matches: 6.4, 6.4.3, 6.5-beta1, 6.5-RC1, 6.0.2-RC1, 6.5.1-beta1
+if [[ ! "$WP_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?(-(alpha|beta|RC)[0-9]+)?$ ]]; then
     log_error "Invalid version format: $WP_VERSION"
     log_error "Expected formats:"
     log_error "  Stable: 6.4, 6.4.3"
-    log_error "  Beta:   6.5-beta1"
-    log_error "  RC:     6.5-RC1"
+    log_error "  Beta:   6.5-beta1, 6.5.1-beta1"
+    log_error "  RC:     6.5-RC1, 6.5.1-RC1"
     exit 1
 fi
 
