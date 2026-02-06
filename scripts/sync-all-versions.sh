@@ -141,27 +141,29 @@ get_branch_name() {
     echo "$(get_major_minor "$1").x"
 }
 
-# Fetch all WordPress version tags from GitHub
-log_step "Fetching WordPress version tags from GitHub..."
+# Fetch all WordPress versions
+log_step "Fetching WordPress versions..."
 
-# Use GitHub API to get all tags
+ALL_VERSIONS=""
+
+# Fetch stable versions from GitHub API
+log_info "Fetching stable versions from GitHub..."
 TAGS_JSON=$(curl -sL "https://api.github.com/repos/WordPress/WordPress/tags?per_page=100")
 
 # Extract version numbers (filter out non-version tags)
-# Matches: 6.5, 6.5.1, 6.5-beta1, 6.5-RC1, 6.5-alpha1
-ALL_VERSIONS=$(echo "$TAGS_JSON" | grep -o '"name": "[^"]*"' | cut -d'"' -f4 | grep -E '^[0-9]+\.[0-9]+((\.[0-9]+)|(-(alpha|beta|RC)[0-9]+))?$' | sort -V)
+GITHUB_VERSIONS=$(echo "$TAGS_JSON" | grep -o '"name": "[^"]*"' | cut -d'"' -f4 | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V)
 
 # If we need more than 100 tags, paginate
 PAGE=2
 while true; do
     NEXT_JSON=$(curl -sL "https://api.github.com/repos/WordPress/WordPress/tags?per_page=100&page=$PAGE")
-    NEXT_VERSIONS=$(echo "$NEXT_JSON" | grep -o '"name": "[^"]*"' | cut -d'"' -f4 | grep -E '^[0-9]+\.[0-9]+((\.[0-9]+)|(-(alpha|beta|RC)[0-9]+))?$' 2>/dev/null || true)
+    NEXT_VERSIONS=$(echo "$NEXT_JSON" | grep -o '"name": "[^"]*"' | cut -d'"' -f4 | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' 2>/dev/null || true)
 
     if [[ -z "$NEXT_VERSIONS" ]]; then
         break
     fi
 
-    ALL_VERSIONS=$(printf '%s\n%s' "$ALL_VERSIONS" "$NEXT_VERSIONS" | sort -V)
+    GITHUB_VERSIONS=$(printf '%s\n%s' "$GITHUB_VERSIONS" "$NEXT_VERSIONS" | sort -V)
     PAGE=$((PAGE + 1))
 
     # Safety limit
@@ -170,20 +172,33 @@ while true; do
     fi
 done
 
-# Remove duplicates and sort
-ALL_VERSIONS=$(echo "$ALL_VERSIONS" | sort -V | uniq)
+ALL_VERSIONS="$GITHUB_VERSIONS"
 
-# Filter out pre-release versions unless --include-prerelease is set
-if [[ "$INCLUDE_PRERELEASE" == false ]]; then
-    STABLE_VERSIONS=$(echo "$ALL_VERSIONS" | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' || true)
-    PRERELEASE_COUNT=$(($(echo "$ALL_VERSIONS" | wc -l) - $(echo "$STABLE_VERSIONS" | grep -v '^$' | wc -l)))
-    ALL_VERSIONS="$STABLE_VERSIONS"
-    if [[ $PRERELEASE_COUNT -gt 0 ]]; then
-        log_info "Skipping $PRERELEASE_COUNT pre-release versions (use --include-prerelease to include)"
+# Fetch pre-release versions from WordPress.org releases page if requested
+if [[ "$INCLUDE_PRERELEASE" == true ]]; then
+    log_info "Fetching pre-release versions from WordPress.org..."
+
+    # Fetch the releases page and extract beta/RC versions
+    RELEASES_PAGE=$(curl -sL "https://wordpress.org/download/releases/")
+
+    # Extract version numbers from the beta/RC section
+    # Matches: 6.9-RC1, 6.9-beta1, 6.8.2-RC1, etc.
+    PRERELEASE_VERSIONS=$(echo "$RELEASES_PAGE" | \
+        grep -oE 'wordpress-[0-9]+\.[0-9]+(\.[0-9]+)?-(alpha|beta|RC)[0-9]+' | \
+        sed 's/wordpress-//' | \
+        sort -V | uniq)
+
+    if [[ -n "$PRERELEASE_VERSIONS" ]]; then
+        ALL_VERSIONS=$(printf '%s\n%s' "$ALL_VERSIONS" "$PRERELEASE_VERSIONS" | sort -V)
+        PRERELEASE_COUNT=$(echo "$PRERELEASE_VERSIONS" | wc -l | tr -d ' ')
+        log_info "Found $PRERELEASE_COUNT pre-release versions"
     fi
 fi
 
-log_info "Found $(echo "$ALL_VERSIONS" | grep -v '^$' | wc -l | tr -d ' ') WordPress versions"
+# Remove duplicates and sort
+ALL_VERSIONS=$(echo "$ALL_VERSIONS" | sort -V | uniq | grep -v '^$')
+
+log_info "Found $(echo "$ALL_VERSIONS" | wc -l | tr -d ' ') WordPress versions total"
 
 # Filter versions based on options
 VERSIONS_TO_SYNC=""
