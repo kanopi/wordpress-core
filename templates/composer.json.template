@@ -1,0 +1,55 @@
+{
+    "name": "kanopi/wordpress",
+    "version": "{{VERSION}}",
+    "description": "WordPress {{VERSION}} core with Composer scaffold support for flexible project layouts.",
+    "type": "wordpress-core",
+    "license": "GPL-2.0-or-later",
+    "keywords": [
+        "wordpress",
+        "core",
+        "scaffold"
+    ],
+    "homepage": "https://github.com/kanopi/wordpress",
+    "require": {
+        "php": ">=7.4",
+        "kanopi/wp-core-composer-scaffold": "^1.0",
+        "ext-json": "*",
+        "ext-mysqli": "*",
+        "ext-hash": "*"
+    },
+    "autoload": {
+        "files": [
+            "wp-includes/version.php"
+        ]
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-{{MAJOR_VERSION}}.x": "{{MAJOR_VERSION}}.x-dev"
+        },
+        "wp-scaffold": {
+            "file-mapping": {
+                "[web-root]/index.php": "index.php",
+                "[web-root]/wp-config-sample.php": "wp-config-sample.php",
+                "[web-root]/.htaccess": "htaccess",
+                "[web-root]/robots.txt": "robots.txt",
+                "[web-root]/license.txt": "license.txt",
+                "[web-root]/readme.html": "readme.html",
+                "[web-root]/wp-activate.php": "wp-activate.php",
+                "[web-root]/wp-blog-header.php": "wp-blog-header.php",
+                "[web-root]/wp-comments-post.php": "wp-comments-post.php",
+                "[web-root]/wp-cron.php": "wp-cron.php",
+                "[web-root]/wp-links-opml.php": "wp-links-opml.php",
+                "[web-root]/wp-load.php": "wp-load.php",
+                "[web-root]/wp-login.php": "wp-login.php",
+                "[web-root]/wp-mail.php": "wp-mail.php",
+                "[web-root]/wp-settings.php": "wp-settings.php",
+                "[web-root]/wp-signup.php": "wp-signup.php",
+                "[web-root]/wp-trackback.php": "wp-trackback.php",
+                "[web-root]/xmlrpc.php": "xmlrpc.php",
+                "[web-root]/wp-admin": "wp-admin",
+                "[web-root]/wp-includes": "wp-includes",
+                "[web-root]/wp-content/index.php": "wp-content/index.php"
+            }
+        }
+    }
+}
