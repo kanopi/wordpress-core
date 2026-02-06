@@ -49,32 +49,43 @@ jobs:
       - run:
           name: Check for new WordPress versions
           command: |
-            # Fetch all WordPress tags from GitHub
+            # Fetch all WordPress tags from GitHub (stable versions)
             echo "Fetching WordPress versions from GitHub..."
             WORDPRESS_VERSIONS=$(curl -sL "https://api.github.com/repos/WordPress/WordPress/tags?per_page=100" | \
               jq -r '.[].name' | \
               grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' | \
               sort -V)
 
+            # Also fetch pre-release versions from WordPress.org
+            echo "Fetching pre-release versions from WordPress.org..."
+            PRERELEASE_VERSIONS=$(curl -sL "https://wordpress.org/download/releases/" | \
+              grep -oE 'wordpress-[0-9]+\.[0-9]+(\.[0-9]+)?-(alpha|beta|RC)[0-9]+' | \
+              sed 's/wordpress-//' | \
+              sort -V | uniq || true)
+
+            # Combine all versions
+            ALL_WP_VERSIONS=$(printf '%s\n%s' "$WORDPRESS_VERSIONS" "$PRERELEASE_VERSIONS" | sort -V | uniq)
+
             # Fetch our existing tags
             echo "Fetching existing tags..."
             git fetch --tags
-            OUR_TAGS=$(git tag -l | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V)
+            OUR_TAGS=$(git tag -l | sort -V)
 
             # Find versions we don't have (only sync 6.0+)
             echo "Comparing versions..."
             NEW_VERSIONS=""
-            for version in $WORDPRESS_VERSIONS; do
-              # Normalize version (6.5 -> 6.5.0)
+            for version in $ALL_WP_VERSIONS; do
+              # Normalize version for Composer (6.5 -> 6.5.0, 6.5-beta1 -> 6.5.0-beta1)
               if [[ "$version" =~ ^([0-9]+)\.([0-9]+)$ ]]; then
                 normalized="${version}.0"
+              elif [[ "$version" =~ ^([0-9]+)\.([0-9]+)-(.+)$ ]]; then
+                normalized="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0-${BASH_REMATCH[3]}"
               else
                 normalized="$version"
               fi
 
               # Check if >= 6.0
               major=$(echo "$version" | cut -d. -f1)
-              minor=$(echo "$version" | cut -d. -f2)
               if [[ $major -lt 6 ]]; then
                 continue
               fi
