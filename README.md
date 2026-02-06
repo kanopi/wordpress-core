@@ -151,6 +151,43 @@ When installed, files are scaffolded from package root to your web root:
 | `htaccess` | `[web-root]/.htaccess` |
 | `robots.txt` | `[web-root]/robots.txt` |
 
+## CI/CD
+
+### Daily Sync
+
+CircleCI runs daily at 6 AM UTC to check for new WordPress releases and automatically sync them.
+
+### Manual Triggers
+
+Trigger via CircleCI API or UI:
+
+```bash
+# Sync a specific version
+curl -X POST https://circleci.com/api/v2/project/gh/kanopi/wordpress-core/pipeline \
+  -H "Circle-Token: $CIRCLE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"parameters": {"sync_version": true, "wordpress_version": "6.5.1"}}'
+
+# Sync all versions >= 6.0
+curl -X POST https://circleci.com/api/v2/project/gh/kanopi/wordpress-core/pipeline \
+  -H "Circle-Token: $CIRCLE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"parameters": {"sync_all": true, "min_version": "6.0"}}'
+
+# Include pre-release versions
+curl -X POST https://circleci.com/api/v2/project/gh/kanopi/wordpress-core/pipeline \
+  -H "Circle-Token: $CIRCLE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"parameters": {"sync_all": true, "include_prerelease": true}}'
+```
+
+### CircleCI Setup
+
+1. Add the repository to CircleCI
+2. Create a context named `github-push` with:
+   - `GITHUB_TOKEN` - Personal access token with repo push permissions
+3. Configure the checkout key to have write access
+
 ## Requirements
 
 - PHP >= 7.4
