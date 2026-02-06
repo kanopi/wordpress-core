@@ -7,10 +7,10 @@
 #   ./scripts/sync-wordpress.sh <version> [--commit] [--tag] [--push]
 #
 # Examples:
-#   ./scripts/sync-wordpress.sh 6.4.3              # Download and prepare
-#   ./scripts/sync-wordpress.sh 6.4.3 --commit     # Download, prepare, commit
+#   ./scripts/sync-wordpress.sh 6.4.3              # Stable version
+#   ./scripts/sync-wordpress.sh 6.5-beta1          # Beta version
+#   ./scripts/sync-wordpress.sh 6.5-RC1            # Release candidate
 #   ./scripts/sync-wordpress.sh 6.4.3 --tag        # Download, prepare, commit, tag
-#   ./scripts/sync-wordpress.sh 6.4.3 --push       # Download, prepare, commit, tag, push
 #
 
 set -euo pipefail
@@ -52,7 +52,10 @@ usage() {
     echo "Usage: $0 <version> [--commit] [--tag] [--push]"
     echo ""
     echo "Arguments:"
-    echo "  version     WordPress version to sync (e.g., 6.4.3)"
+    echo "  version     WordPress version to sync"
+    echo "              Stable: 6.4.3, 6.5"
+    echo "              Beta:   6.5-beta1, 6.5-beta2"
+    echo "              RC:     6.5-RC1, 6.5-RC2"
     echo ""
     echo "Options:"
     echo "  --commit    Create a git commit"
@@ -61,9 +64,46 @@ usage() {
     echo ""
     echo "Examples:"
     echo "  $0 6.4.3"
-    echo "  $0 6.4.3 --tag"
-    echo "  $0 6.4.3 --push"
+    echo "  $0 6.5-beta1 --tag"
+    echo "  $0 6.5-RC1 --push"
     exit 1
+}
+
+# Normalize WordPress version to Composer-compatible format
+# WordPress: 6.5-beta1, 6.5-RC1, 6.5, 6.5.1
+# Composer:  6.5.0-beta1, 6.5.0-RC1, 6.5.0, 6.5.1
+normalize_version() {
+    local version="$1"
+    local normalized=""
+
+    # Check if it's a pre-release version (contains - followed by alpha/beta/RC)
+    if [[ "$version" =~ ^([0-9]+\.[0-9]+)(\.([0-9]+))?(-(.+))?$ ]]; then
+        local major_minor="${BASH_REMATCH[1]}"
+        local patch="${BASH_REMATCH[3]:-0}"
+        local prerelease="${BASH_REMATCH[5]:-}"
+
+        if [[ -n "$prerelease" ]]; then
+            # Normalize pre-release identifier (beta1 -> beta.1, RC1 -> RC.1)
+            # Actually, Composer accepts both formats, keep as-is for clarity
+            normalized="${major_minor}.${patch}-${prerelease}"
+        else
+            normalized="${major_minor}.${patch}"
+        fi
+    else
+        normalized="$version"
+    fi
+
+    echo "$normalized"
+}
+
+# Get major.minor from version (handles both 6.5 and 6.5.0-beta1)
+get_major_minor() {
+    echo "$1" | grep -oE '^[0-9]+\.[0-9]+'
+}
+
+# Get major version
+get_major() {
+    echo "$1" | cut -d. -f1
 }
 
 # Parse arguments
@@ -71,7 +111,7 @@ if [[ $# -lt 1 ]]; then
     usage
 fi
 
-VERSION="$1"
+WP_VERSION="$1"  # Original WordPress version (for download URL)
 shift
 
 DO_COMMIT=false
@@ -102,25 +142,31 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Validate version format
-if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
-    log_error "Invalid version format: $VERSION"
-    log_error "Expected format: X.Y or X.Y.Z (e.g., 6.4 or 6.4.3)"
+# Validate version format (stable, beta, RC, alpha)
+if [[ ! "$WP_VERSION" =~ ^[0-9]+\.[0-9]+((\.[0-9]+)|(-(alpha|beta|RC)[0-9]+))?$ ]]; then
+    log_error "Invalid version format: $WP_VERSION"
+    log_error "Expected formats:"
+    log_error "  Stable: 6.4, 6.4.3"
+    log_error "  Beta:   6.5-beta1"
+    log_error "  RC:     6.5-RC1"
     exit 1
 fi
 
-# Extract major version
-MAJOR_VERSION=$(echo "$VERSION" | cut -d. -f1)
+# Normalize version for Composer
+COMPOSER_VERSION=$(normalize_version "$WP_VERSION")
+MAJOR_MINOR=$(get_major_minor "$WP_VERSION")
+MAJOR_VERSION=$(get_major "$WP_VERSION")
 
-log_info "Syncing WordPress version: $VERSION"
-log_info "Major version: $MAJOR_VERSION"
+log_info "WordPress version: $WP_VERSION"
+log_info "Composer version: $COMPOSER_VERSION"
+log_info "Branch: ${MAJOR_MINOR}.x"
 
 # Step 1: Download WordPress
-log_step "Downloading WordPress $VERSION..."
-DOWNLOAD_URL="https://wordpress.org/wordpress-${VERSION}.tar.gz"
+log_step "Downloading WordPress $WP_VERSION..."
+DOWNLOAD_URL="https://wordpress.org/wordpress-${WP_VERSION}.tar.gz"
 
 if ! curl -sL "$DOWNLOAD_URL" -o "$TEMP_DIR/wordpress.tar.gz"; then
-    log_error "Failed to download WordPress $VERSION from $DOWNLOAD_URL"
+    log_error "Failed to download WordPress $WP_VERSION from $DOWNLOAD_URL"
     exit 1
 fi
 
@@ -176,7 +222,7 @@ cp "$TEMPLATES_DIR/scaffold-overrides/wp-content/index.php" "$PACKAGE_DIR/wp-con
 
 # Step 6: Generate composer.json from template
 log_step "Generating composer.json..."
-sed -e "s/{{VERSION}}/$VERSION/g" \
+sed -e "s/{{VERSION}}/$COMPOSER_VERSION/g" \
     -e "s/{{MAJOR_VERSION}}/$MAJOR_VERSION/g" \
     "$TEMPLATES_DIR/composer.json.template" > "$PACKAGE_DIR/composer.json"
 
@@ -201,14 +247,13 @@ if [[ "$DO_COMMIT" == true ]]; then
     log_step "Creating git commit..."
     cd "$PACKAGE_DIR"
     git add -A
-    git commit -m "WordPress $VERSION" || log_warn "Nothing to commit"
+    git commit -m "WordPress $COMPOSER_VERSION" || log_warn "Nothing to commit"
 fi
 
 if [[ "$DO_TAG" == true ]]; then
     log_step "Creating git tag..."
-    TAG_NAME="$VERSION"
-    git tag -a "$TAG_NAME" -m "WordPress $VERSION" 2>/dev/null || {
-        log_warn "Tag $TAG_NAME already exists, skipping"
+    git tag -a "$COMPOSER_VERSION" -m "WordPress $COMPOSER_VERSION" 2>/dev/null || {
+        log_warn "Tag $COMPOSER_VERSION already exists, skipping"
     }
 fi
 
@@ -227,11 +272,12 @@ echo "========================================"
 echo "  Sync Complete"
 echo "========================================"
 echo "  WordPress Version: $SYNCED_VERSION"
+echo "  Composer Version:  $COMPOSER_VERSION"
 echo "  Package Directory: $PACKAGE_DIR"
 echo "  Files synced: $FILE_COUNT"
 echo ""
 if [[ "$DO_TAG" == true ]]; then
-    echo "  Git tag created: $VERSION"
+    echo "  Git tag created: $COMPOSER_VERSION"
 fi
 if [[ "$DO_PUSH" == true ]]; then
     echo "  Changes pushed to remote"

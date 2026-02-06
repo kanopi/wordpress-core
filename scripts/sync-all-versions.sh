@@ -7,15 +7,17 @@
 #   ./scripts/sync-all-versions.sh [options]
 #
 # Options:
-#   --min-version X.Y    Only sync versions >= X.Y (default: 5.0)
-#   --max-version X.Y    Only sync versions <= X.Y (default: latest)
-#   --single X.Y.Z       Sync only a single specific version
-#   --dry-run            Show what would be done without making changes
-#   --push               Push branches and tags to remote
+#   --min-version X.Y       Only sync versions >= X.Y (default: 5.0)
+#   --max-version X.Y       Only sync versions <= X.Y (default: latest)
+#   --single X.Y.Z          Sync only a single specific version
+#   --include-prerelease    Include alpha, beta, and RC versions
+#   --dry-run               Show what would be done without making changes
+#   --push                  Push branches and tags to remote
 #
 # Examples:
 #   ./scripts/sync-all-versions.sh --min-version 6.0
 #   ./scripts/sync-all-versions.sh --single 6.4.3 --push
+#   ./scripts/sync-all-versions.sh --include-prerelease --min-version 6.5
 #   ./scripts/sync-all-versions.sh --dry-run
 #
 
@@ -56,17 +58,19 @@ usage() {
     echo "Usage: $0 [options]"
     echo ""
     echo "Options:"
-    echo "  --min-version X.Y    Only sync versions >= X.Y (default: 5.0)"
-    echo "  --max-version X.Y    Only sync versions <= X.Y (default: latest)"
-    echo "  --single X.Y.Z       Sync only a single specific version"
-    echo "  --dry-run            Show what would be done without making changes"
-    echo "  --push               Push branches and tags to remote"
+    echo "  --min-version X.Y       Only sync versions >= X.Y (default: 5.0)"
+    echo "  --max-version X.Y       Only sync versions <= X.Y (default: latest)"
+    echo "  --single X.Y.Z          Sync only a single specific version"
+    echo "  --include-prerelease    Include alpha, beta, and RC versions"
+    echo "  --dry-run               Show what would be done without making changes"
+    echo "  --push                  Push branches and tags to remote"
     echo ""
     echo "Creates a branch per major.minor version (e.g., 6.4.x, 6.5.x)"
     echo ""
     echo "Examples:"
     echo "  $0 --min-version 6.0"
     echo "  $0 --single 6.4.3 --push"
+    echo "  $0 --include-prerelease --min-version 6.5"
     echo "  $0 --dry-run"
     exit 1
 }
@@ -77,6 +81,7 @@ MAX_VERSION=""
 SINGLE_VERSION=""
 DRY_RUN=false
 DO_PUSH=false
+INCLUDE_PRERELEASE=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -101,6 +106,10 @@ while [[ $# -gt 0 ]]; do
             DO_PUSH=true
             shift
             ;;
+        --include-prerelease)
+            INCLUDE_PRERELEASE=true
+            shift
+            ;;
         --help|-h)
             usage
             ;;
@@ -122,9 +131,9 @@ version_le() {
     printf '%s\n%s\n' "$1" "$2" | sort -V -C
 }
 
-# Function to get major.minor from version
+# Function to get major.minor from version (handles 6.5, 6.5.1, 6.5-beta1)
 get_major_minor() {
-    echo "$1" | cut -d. -f1,2
+    echo "$1" | grep -oE '^[0-9]+\.[0-9]+'
 }
 
 # Function to get branch name for a version
@@ -139,13 +148,14 @@ log_step "Fetching WordPress version tags from GitHub..."
 TAGS_JSON=$(curl -sL "https://api.github.com/repos/WordPress/WordPress/tags?per_page=100")
 
 # Extract version numbers (filter out non-version tags)
-ALL_VERSIONS=$(echo "$TAGS_JSON" | grep -o '"name": "[^"]*"' | cut -d'"' -f4 | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V)
+# Matches: 6.5, 6.5.1, 6.5-beta1, 6.5-RC1, 6.5-alpha1
+ALL_VERSIONS=$(echo "$TAGS_JSON" | grep -o '"name": "[^"]*"' | cut -d'"' -f4 | grep -E '^[0-9]+\.[0-9]+((\.[0-9]+)|(-(alpha|beta|RC)[0-9]+))?$' | sort -V)
 
 # If we need more than 100 tags, paginate
 PAGE=2
 while true; do
     NEXT_JSON=$(curl -sL "https://api.github.com/repos/WordPress/WordPress/tags?per_page=100&page=$PAGE")
-    NEXT_VERSIONS=$(echo "$NEXT_JSON" | grep -o '"name": "[^"]*"' | cut -d'"' -f4 | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' 2>/dev/null || true)
+    NEXT_VERSIONS=$(echo "$NEXT_JSON" | grep -o '"name": "[^"]*"' | cut -d'"' -f4 | grep -E '^[0-9]+\.[0-9]+((\.[0-9]+)|(-(alpha|beta|RC)[0-9]+))?$' 2>/dev/null || true)
 
     if [[ -z "$NEXT_VERSIONS" ]]; then
         break
@@ -163,7 +173,17 @@ done
 # Remove duplicates and sort
 ALL_VERSIONS=$(echo "$ALL_VERSIONS" | sort -V | uniq)
 
-log_info "Found $(echo "$ALL_VERSIONS" | wc -l | tr -d ' ') WordPress versions"
+# Filter out pre-release versions unless --include-prerelease is set
+if [[ "$INCLUDE_PRERELEASE" == false ]]; then
+    STABLE_VERSIONS=$(echo "$ALL_VERSIONS" | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' || true)
+    PRERELEASE_COUNT=$(($(echo "$ALL_VERSIONS" | wc -l) - $(echo "$STABLE_VERSIONS" | grep -v '^$' | wc -l)))
+    ALL_VERSIONS="$STABLE_VERSIONS"
+    if [[ $PRERELEASE_COUNT -gt 0 ]]; then
+        log_info "Skipping $PRERELEASE_COUNT pre-release versions (use --include-prerelease to include)"
+    fi
+fi
+
+log_info "Found $(echo "$ALL_VERSIONS" | grep -v '^$' | wc -l | tr -d ' ') WordPress versions"
 
 # Filter versions based on options
 VERSIONS_TO_SYNC=""
