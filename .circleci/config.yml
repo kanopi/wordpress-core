@@ -33,25 +33,30 @@ executors:
     docker:
       - image: cimg/php:8.3
     resource_class: small
+    environment:
+      TARGET_REPO_SLUG: kanopi/wordpress-core
+      TOOLING_BRANCH: main
+      GIT_TERMINAL_PROMPT: "0"
 
 commands:
   clone-tooling:
     description: >
-      Clone only the tooling branch. The default CircleCI `checkout` would pull
-      the whole mirror (~690 MB of WordPress history), which this repo does not
-      need in order to run its own scripts.
+      Shallow-clone just the branch under test. The default CircleCI `checkout`
+      clones every ref, which here means ~690 MB of mirrored WordPress history
+      that no job in this repo needs.
     steps:
       - run:
           name: Clone tooling branch
           command: |
-            git clone --depth 1 --single-branch --branch "$TOOLING_BRANCH" \
+            git clone --depth 1 --single-branch \
+              --branch "${CIRCLE_BRANCH:-$TOOLING_BRANCH}" \
               "https://x-access-token:${GITHUB_TOKEN}@github.com/${TARGET_REPO_SLUG}.git" .
 
 jobs:
   lint:
     executor: php
     steps:
-      - checkout
+      - clone-tooling
       - run:
           name: Install shellcheck
           command: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
@@ -123,4 +128,5 @@ workflows:
         - not: << pipeline.parameters.run_mirror >>
         - equal: [main, << pipeline.git.branch >>]
     jobs:
-      - lint
+      - lint:
+          context: github-push
