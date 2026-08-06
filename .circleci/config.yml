@@ -71,9 +71,7 @@ jobs:
           command: |
             python3 bin/composer-json.py \
               --package kanopi/wordpress-core \
-              --wp-version 6.9.1 \
               --php-version 7.2.24 \
-              --installer kanopi/wp-core-installer \
               --branch-alias 'dev-6.9-branch=6.9.x-dev' \
               > /tmp/composer.json
             cd /tmp && composer validate --no-check-all --no-check-lock --strict

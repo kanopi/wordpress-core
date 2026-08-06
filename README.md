@@ -17,7 +17,8 @@ The package is `type: wordpress-core`, installed by
 ```json
 {
     "require": {
-        "kanopi/wordpress-core": "^6.9"
+        "kanopi/wordpress-core": "^6.9",
+        "kanopi/wp-core-installer": "^1.1"
     },
     "extra": {
         "wordpress-install-dir": "public"
@@ -30,8 +31,10 @@ The package is `type: wordpress-core`, installed by
 }
 ```
 
-`kanopi/wp-core-installer` is a hard dependency of every release from WordPress
-6.0 up, so you do not need to require it yourself.
+This package declares **no** dependency on an installer — it is a plain mirror
+of WordPress core. Which plugin deploys it is your project's choice, so require
+`kanopi/wp-core-installer` yourself. Pinning it here would drag its PHP 8 floor
+onto every WordPress release in the mirror, back to 1.5.
 
 `extra.wordpress-install-dir` decides where core lands — `"."` for the project
 root, `"public"` (the default) or `"public/wp"` for a subdirectory. See the
@@ -122,9 +125,6 @@ doesn't spawn 900 CircleCI pipelines.
 | `UPSTREAM_URL` | `https://github.com/WordPress/WordPress.git` |
 | `TARGET_URL` | `git@github.com:kanopi/wordpress-core.git` |
 | `PACKAGE_NAME` | `kanopi/wordpress-core` |
-| `INSTALLER_NAME` | `kanopi/wp-core-installer` |
-| `INSTALLER_CONSTRAINT` | `^1.1` |
-| `INSTALLER_MIN_WP` | `6.0` — older releases only `suggest` the installer |
 | `TOOLING_BRANCH` | `main` — never mirrored over |
 | `EXCLUDE_BRANCHES` | `^dependabot/` — upstream PR branches, skipped as noise |
 | `WORKDIR` | `./.mirror` |

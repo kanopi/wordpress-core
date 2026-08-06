@@ -8,7 +8,6 @@ overlay commits and skip work it has already done.
 
 import argparse
 import json
-import re
 import sys
 
 
@@ -26,56 +25,24 @@ def parse_branch_alias(raw):
     return aliases
 
 
-def major_minor(version):
-    """'6.9.1' -> (6, 9). '7.1-RC2-63095' -> (7, 1). Unparseable -> None."""
-    match = re.match(r"^(\d+)\.(\d+)", version or "")
-    if not match:
-        return None
-    return int(match.group(1)), int(match.group(2))
-
-
-def at_least(version, floor):
-    """True when `version` is >= `floor`, comparing on major.minor only."""
-    left, right = major_minor(version), major_minor(floor)
-    if left is None or right is None:
-        return False
-    return left >= right
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", required=True,
                         help="Composer package name, e.g. kanopi/wordpress-core")
     parser.add_argument("--source-url", default="https://github.com/kanopi/wordpress-core",
                         help="Homepage/support URL for the mirror repository")
-    parser.add_argument("--wp-version", default="",
-                        help="Raw $wp_version from the ref's wp-includes/version.php")
     parser.add_argument("--php-version", default="",
                         help="Raw $required_php_version from the ref's wp-includes/version.php")
-    parser.add_argument("--installer", default="",
-                        help="Composer plugin that installs this package; omit to skip")
-    parser.add_argument("--installer-constraint", default="^1.1",
-                        help="Version constraint for --installer")
-    parser.add_argument("--installer-min-wp", default="6.0",
-                        help="Hard-require --installer only from this WP version up; "
-                             "older refs list it under 'suggest' instead")
     parser.add_argument("--branch-alias", default="",
                         help="Comma-separated KEY=VALUE extra.branch-alias entries")
     args = parser.parse_args()
 
+    # Deliberately no dependency on an installer plugin. Which installer
+    # deploys core is the consuming project's choice, and pinning one here
+    # would drag its PHP floor onto every WordPress release we mirror.
     require = {}
     if args.php_version:
         require["php"] = ">=%s" % args.php_version
-
-    suggest = {}
-    if args.installer:
-        if at_least(args.wp_version, args.installer_min_wp):
-            require[args.installer] = args.installer_constraint
-        else:
-            suggest[args.installer] = (
-                "Installs WordPress core into your web root "
-                "(requires PHP 8.0+, so it is not hard-required on this release)."
-            )
 
     data = {
         "name": args.package,
@@ -94,9 +61,6 @@ def main():
         },
         "require": require,
     }
-
-    if suggest:
-        data["suggest"] = suggest
 
     aliases = parse_branch_alias(args.branch_alias)
     if aliases:

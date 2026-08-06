@@ -34,9 +34,6 @@ UPSTREAM_URL="${UPSTREAM_URL:-https://github.com/WordPress/WordPress.git}"
 TARGET_URL="${TARGET_URL:-git@github.com:kanopi/wordpress-core.git}"
 PACKAGE_NAME="${PACKAGE_NAME:-kanopi/wordpress-core}"
 SOURCE_URL="${SOURCE_URL:-https://github.com/kanopi/wordpress-core}"
-INSTALLER_NAME="${INSTALLER_NAME:-kanopi/wp-core-installer}"
-INSTALLER_CONSTRAINT="${INSTALLER_CONSTRAINT:-^1.1}"
-INSTALLER_MIN_WP="${INSTALLER_MIN_WP:-6.0}"
 TOOLING_BRANCH="${TOOLING_BRANCH:-main}"
 # Upstream carries Dependabot PR branches that are not WordPress series and
 # only add noise to `composer show --all`. Set to "" to mirror them anyway.
@@ -224,18 +221,13 @@ in_only_list() {
 build_overlay() {
     local upstream_commit="$1" label="$2" alias_spec="$3"
 
-    local wp_version php_version
-    wp_version="$(read_version_var "$upstream_commit" wp_version)"
+    local php_version
     php_version="$(read_version_var "$upstream_commit" required_php_version)"
 
     local -a json_args=(
         --package "$PACKAGE_NAME"
         --source-url "$SOURCE_URL"
-        --wp-version "$wp_version"
         --php-version "$php_version"
-        --installer "$INSTALLER_NAME"
-        --installer-constraint "$INSTALLER_CONSTRAINT"
-        --installer-min-wp "$INSTALLER_MIN_WP"
     )
     [[ -n "$alias_spec" ]] && json_args+=(--branch-alias "$alias_spec")
 
