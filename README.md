@@ -16,9 +16,6 @@ The package is `type: wordpress-core`, installed by
 
 ```json
 {
-    "repositories": [
-        { "type": "vcs", "url": "https://github.com/kanopi/wordpress-core" }
-    ],
     "require": {
         "kanopi/wordpress-core": "^6.9"
     },
@@ -34,8 +31,7 @@ The package is `type: wordpress-core`, installed by
 ```
 
 `kanopi/wp-core-installer` is a hard dependency of every release from WordPress
-6.0 up, so you do not need to require it yourself. Once the package is listed on
-Packagist the `repositories` block can be dropped.
+6.0 up, so you do not need to require it yourself.
 
 `extra.wordpress-install-dir` decides where core lands — `"."` for the project
 root, `"public"` (the default) or `"public/wp"` for a subdirectory. See the
