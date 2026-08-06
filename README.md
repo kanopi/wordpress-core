@@ -130,6 +130,7 @@ doesn't spawn 900 CircleCI pipelines.
 | `INSTALLER_CONSTRAINT` | `^1.1` |
 | `INSTALLER_MIN_WP` | `6.0` — older releases only `suggest` the installer |
 | `TOOLING_BRANCH` | `main` — never mirrored over |
+| `EXCLUDE_BRANCHES` | `^dependabot/` — upstream PR branches, skipped as noise |
 | `WORKDIR` | `./.mirror` |
 
 ---
@@ -184,11 +185,16 @@ reads for the package name and description, and it is the only mirrored branch
 guaranteed to exist. `main` deliberately has no `composer.json`, so Packagist
 ignores it and nobody can install the tooling by mistake.
 
-Submit `https://github.com/kanopi/wordpress-core` at
-[packagist.org/packages/submit](https://packagist.org/packages/submit) and add
-the Packagist webhook so new tags appear automatically.
+The package is **already registered** at
+[packagist.org/packages/kanopi/wordpress-core](https://packagist.org/packages/kanopi/wordpress-core),
+so submitting it again fails as a duplicate. Instead, on that page:
 
-Note that the repository must be **public** for Packagist to index it.
+1. **Update** — forces a re-crawl so the new refs are indexed.
+2. **Settings → un-abandon** — it is currently flagged abandoned from a 2021
+   attempt that only ever published 6.5.3.
+3. Add the Packagist webhook in GitHub so new tags publish automatically.
+
+The repository must stay **public** for Packagist to index it.
 
 ---
 

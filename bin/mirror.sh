@@ -38,6 +38,9 @@ INSTALLER_NAME="${INSTALLER_NAME:-kanopi/wp-core-installer}"
 INSTALLER_CONSTRAINT="${INSTALLER_CONSTRAINT:-^1.1}"
 INSTALLER_MIN_WP="${INSTALLER_MIN_WP:-6.0}"
 TOOLING_BRANCH="${TOOLING_BRANCH:-main}"
+# Upstream carries Dependabot PR branches that are not WordPress series and
+# only add noise to `composer show --all`. Set to "" to mirror them anyway.
+EXCLUDE_BRANCHES="${EXCLUDE_BRANCHES:-^dependabot/}"
 WORKDIR="${WORKDIR:-$ROOT/.mirror}"
 COMMIT_NAME="${COMMIT_NAME:-Kanopi CI}"
 COMMIT_EMAIL="${COMMIT_EMAIL:-ci@kanopi.com}"
@@ -296,6 +299,9 @@ if [[ "$SKIP_BRANCHES" == false ]]; then
     while read -r branch; do
         [[ -z "$branch" ]] && continue
         [[ "$branch" == "$TOOLING_BRANCH" ]] && continue
+        if [[ -n "$EXCLUDE_BRANCHES" ]] && printf '%s' "$branch" | grep -qE "$EXCLUDE_BRANCHES"; then
+            SKIPPED_FILTERED=$((SKIPPED_FILTERED + 1)); continue
+        fi
         in_only_list "$branch" || continue
         PLAN_BRANCHES+=("$branch")
     done < <(git for-each-ref --format='%(refname:strip=3)' refs/upstream/heads | sort -V)
