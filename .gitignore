@@ -1,0 +1,5 @@
+# Local object cache used by bin/mirror.sh (a full clone of WordPress history)
+/.mirror/
+
+# Local Claude Code settings
+/.claude/settings.local.json

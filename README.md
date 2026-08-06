@@ -1,194 +1,198 @@
-# kanopi/wordpress
+# kanopi/wordpress-core
 
-WordPress core with Composer scaffold support for flexible project layouts.
+A Composer-installable mirror of [WordPress/WordPress](https://github.com/WordPress/WordPress).
 
-## Branch Structure
+Every upstream branch and tag is reproduced here with **one extra commit on top
+that adds `composer.json`**. Upstream history is preserved — the overlay
+commit's parent is the real upstream commit — so this is a genuine mirror, not a
+repackaged release tarball.
 
-- **main** - Contains only scripts and templates (no WordPress files)
-- **Version tags** (e.g., `6.4.3`, `6.5.0`) - Contains WordPress core files at project root
+The package is `type: wordpress-core`, installed by
+[`kanopi/wp-core-installer`](https://github.com/kanopi/wp-core-installer).
 
-## Usage
+---
 
-In your project's `composer.json`:
+## Using it in a project
 
 ```json
 {
+    "repositories": [
+        { "type": "vcs", "url": "https://github.com/kanopi/wordpress-core" }
+    ],
     "require": {
-        "kanopi/wordpress": "^6.4"
+        "kanopi/wordpress-core": "^6.9"
     },
     "extra": {
-        "wp-scaffold": {
-            "locations": {
-                "web-root": "./public"
-            }
+        "wordpress-install-dir": "public"
+    },
+    "config": {
+        "allow-plugins": {
+            "kanopi/wp-core-installer": true
         }
     }
 }
 ```
 
-## Branch Structures
+`kanopi/wp-core-installer` is a hard dependency of every release from WordPress
+6.0 up, so you do not need to require it yourself. Once the package is listed on
+Packagist the `repositories` block can be dropped.
 
-### main branch (scripts only)
+`extra.wordpress-install-dir` decides where core lands — `"."` for the project
+root, `"public"` (the default) or `"public/wp"` for a subdirectory. See the
+[installer README](https://github.com/kanopi/wp-core-installer#configuration)
+for the full protected-path and `.gitignore` behaviour.
+
+## What you can require
+
+| Constraint | Resolves to | Composer fetches |
+|---|---|---|
+| `6.9.1`, `^6.9`, `~6.9.0` | tag `6.9.1` | dist archive |
+| `6.9.x-dev` | branch `6.9.x` (head of the 6.9 series) | **git source** |
+| `dev-6.9-branch` | branch `6.9-branch`, upstream's own name | **git source** |
+| `dev-master` | branch `master` — WordPress trunk | **git source** |
+| `7.1.x-dev` | branch `7.1.x`, the series trunk currently targets | **git source** |
+
+Every upstream tag back to 1.5 is mirrored — 850+ of them — so any released
+WordPress version is installable.
+
+### Branch layout
 
 ```
-wordpress-core/
-├── README.md
-├── scripts/
-│   ├── sync-wordpress.sh
-│   └── sync-all-versions.sh
-└── templates/
-    ├── composer.json.template
-    └── scaffold-overrides/
-        ├── htaccess
-        ├── index.php
-        ├── robots.txt
-        ├── wp-config-sample.php
-        └── wp-content/index.php
+main            tooling only: this README, bin/, .circleci/  (never mirrored)
+master          ← GitHub default branch; mirrors upstream master (trunk)
+7.1.x           same commit as master, named so Composer derives 7.1.x-dev
+7.0-branch      verbatim mirror of upstream
+7.0.x           same commit, Composer-friendly alias
+…               one pair per WordPress series, back to 1.5
 ```
 
-### Version tags (e.g., 6.4.3)
+Upstream's `X.Y-branch` naming means nothing to Composer, so each series is
+published twice: once verbatim, and once as `X.Y.x` — which Composer reads as
+`X.Y.x-dev`. Both names point at the same commit. The `X.Y-branch` refs also
+carry an `extra.branch-alias` mapping to `X.Y.x-dev`.
 
-```
-wordpress-core/
-├── composer.json
-├── index.php
-├── htaccess
-├── robots.txt
-├── license.txt
-├── readme.html
-├── wp-activate.php
-├── wp-blog-header.php
-├── wp-comments-post.php
-├── wp-config-sample.php
-├── wp-cron.php
-├── wp-links-opml.php
-├── wp-load.php
-├── wp-login.php
-├── wp-mail.php
-├── wp-settings.php
-├── wp-signup.php
-├── wp-trackback.php
-├── xmlrpc.php
-├── wp-admin/
-├── wp-includes/
-└── wp-content/
-    └── index.php
-```
+### Pre-releases
 
-Note: Version tags contain only WordPress files - no scripts, templates, or README.
+Upstream tags only stable releases; there are no `-RC` or `-beta` tags to
+mirror. Track a pre-release with `dev-master` (currently WordPress
+7.1-RC2) or with the series branch, e.g. `7.1.x-dev`.
 
-## Scripts
+---
 
-### sync-wordpress.sh
+## Running a sync
 
-Sync a single WordPress version:
+One command, idempotent — re-running when nothing changed is a no-op:
 
 ```bash
-# Download and prepare (no git operations)
-./scripts/sync-wordpress.sh 6.4.3
-
-# Download, prepare, and commit
-./scripts/sync-wordpress.sh 6.4.3 --commit
-
-# Download, prepare, commit, and tag
-./scripts/sync-wordpress.sh 6.4.3 --tag
-
-# Download, prepare, commit, tag, and push
-./scripts/sync-wordpress.sh 6.4.3 --push
+bin/mirror.sh --push
 ```
 
-### sync-all-versions.sh
-
-Sync multiple WordPress versions from GitHub:
-
 ```bash
-# Dry run - see what would be synced
-./scripts/sync-all-versions.sh --dry-run
-
-# Sync all versions >= 6.0
-./scripts/sync-all-versions.sh --min-version 6.0
-
-# Sync a specific version
-./scripts/sync-all-versions.sh --single 6.4.3
-
-# Sync and push to remote
-./scripts/sync-all-versions.sh --min-version 6.0 --push
-
-# Create separate branches for each major version
-./scripts/sync-all-versions.sh --branch-per-major --push
+bin/mirror.sh --dry-run                  # list what would be mirrored
+bin/mirror.sh --only 6.9.1 --push        # a single ref
+bin/mirror.sh --only 6.9-branch --push   # a single branch (+ its 6.9.x alias)
+bin/mirror.sh --min-version 6.0 --push   # skip tags older than 6.0
+bin/mirror.sh --force --push             # rebuild tags already published
+bin/mirror.sh --help
 ```
 
-## Templates
+Requirements: `git`, `python3`, and push access to this repo.
 
-- `templates/composer.json.template` - Template for generated composer.json
-- `templates/scaffold-overrides/` - Custom scaffold files that override WordPress defaults
+The first run clones ~690 MB of WordPress history into `.mirror/` (gitignored)
+and takes a few minutes. Later runs only transfer new commits.
 
-### Placeholders
+### How it works
 
-The composer.json template uses these placeholders:
+1. `git ls-remote` lists what this repo already publishes — ref names only, no
+   object transfer.
+2. Upstream is fetched into private `refs/upstream/*` namespaces.
+3. For each ref, `composer.json` is generated from the WordPress version found
+   in that ref's own `wp-includes/version.php`, then spliced onto the upstream
+   tree using git plumbing (`read-tree` / `write-tree` / `commit-tree`). No
+   working tree is ever checked out, which is what keeps 900 refs fast.
+4. Refs are pushed in atomic batches.
 
-- `{{VERSION}}` - Full version (e.g., `6.4.3`)
-- `{{MAJOR_VERSION}}` - Major version number (e.g., `6`)
+Overlay commits are **reproducible**: identity and timestamp are derived from
+the upstream commit, so rebuilding a ref yields a byte-identical commit SHA and
+nothing gets pushed. Their messages carry `[skip ci]` so mirroring 900 refs
+doesn't spawn 900 CircleCI pipelines.
 
-## How It Works
+### Configuration
 
-1. Scripts fetch WordPress from wordpress.org
-2. Core files are placed directly in the package root
-3. Custom scaffold files from `templates/scaffold-overrides/` replace WordPress defaults
-4. `composer.json` is generated from template with version substituted
-5. Git tag is created matching the WordPress version
+`bin/mirror.sh` reads these from the environment:
 
-## File Mapping
+| Variable | Default |
+|---|---|
+| `UPSTREAM_URL` | `https://github.com/WordPress/WordPress.git` |
+| `TARGET_URL` | `git@github.com:kanopi/wordpress-core.git` |
+| `PACKAGE_NAME` | `kanopi/wordpress-core` |
+| `INSTALLER_NAME` | `kanopi/wp-core-installer` |
+| `INSTALLER_CONSTRAINT` | `^1.1` |
+| `INSTALLER_MIN_WP` | `6.0` — older releases only `suggest` the installer |
+| `TOOLING_BRANCH` | `main` — never mirrored over |
+| `WORKDIR` | `./.mirror` |
 
-When installed, files are scaffolded from package root to your web root:
+---
 
-| Source | Destination |
-|--------|-------------|
-| `wp-admin/` | `[web-root]/wp-admin/` |
-| `wp-includes/` | `[web-root]/wp-includes/` |
-| `wp-*.php` | `[web-root]/wp-*.php` |
-| `index.php` | `[web-root]/index.php` |
-| `htaccess` | `[web-root]/.htaccess` |
-| `robots.txt` | `[web-root]/robots.txt` |
+## CircleCI
 
-## CI/CD
+`.circleci/config.yml` defines two workflows:
 
-### Daily Sync
+- **`sync`** — runs `bin/mirror.sh --push`. Fires only when a pipeline sets the
+  `run_mirror` parameter to `true`.
+- **`validate`** — shellcheck, a byte-compile of the generator, and
+  `composer validate` on its output. Runs on ordinary pushes to `main`.
 
-CircleCI runs daily at 6 AM UTC to check for new WordPress releases and automatically sync them.
+### Setup
 
-### Manual Triggers
+1. Add this project in CircleCI.
+2. Create a context named **`github-push`** containing `GITHUB_TOKEN` — a token
+   with push access to `kanopi/wordpress-core`.
+3. Create the schedule in **Project Settings → Triggers → Add Trigger**
+   (CircleCI no longer honours cron blocks in `config.yml`):
+   - Repeat: daily, whatever hour suits you
+   - Attribution: the account whose token should own the pipeline
+   - Branch: **`main`**
+   - Pipeline parameters: `run_mirror` = `true`
 
-Trigger via CircleCI API or UI:
+Set the pipeline parameter, or the scheduled run will do nothing — `sync` is
+gated on it.
+
+### Triggering a sync by hand
 
 ```bash
-# Sync a specific version
 curl -X POST https://circleci.com/api/v2/project/gh/kanopi/wordpress-core/pipeline \
   -H "Circle-Token: $CIRCLE_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"parameters": {"sync_version": true, "wordpress_version": "6.5.1"}}'
-
-# Sync all versions >= 6.0
-curl -X POST https://circleci.com/api/v2/project/gh/kanopi/wordpress-core/pipeline \
-  -H "Circle-Token: $CIRCLE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"parameters": {"sync_all": true, "min_version": "6.0"}}'
-
-# Include pre-release versions
-curl -X POST https://circleci.com/api/v2/project/gh/kanopi/wordpress-core/pipeline \
-  -H "Circle-Token: $CIRCLE_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"parameters": {"sync_all": true, "include_prerelease": true}}'
+  -d '{"branch": "main", "parameters": {"run_mirror": true}}'
 ```
 
-### CircleCI Setup
+Optional parameters: `min_version` (string), `only_refs` (comma-separated
+string), `force` (boolean).
 
-1. Add the repository to CircleCI
-2. Create a context named `github-push` with:
-   - `GITHUB_TOKEN` - Personal access token with repo push permissions
-3. Configure the checkout key to have write access
+```bash
+# Re-mirror one release
+-d '{"branch": "main", "parameters": {"run_mirror": true, "only_refs": "6.9.1", "force": true}}'
+```
 
-## Requirements
+---
 
-- PHP >= 7.4
-- kanopi/wp-core-composer-scaffold ^1.0
+## Publishing to Packagist
+
+The GitHub **default branch must stay `master`** — that is the ref Packagist
+reads for the package name and description, and it is the only mirrored branch
+guaranteed to exist. `main` deliberately has no `composer.json`, so Packagist
+ignores it and nobody can install the tooling by mistake.
+
+Submit `https://github.com/kanopi/wordpress-core` at
+[packagist.org/packages/submit](https://packagist.org/packages/submit) and add
+the Packagist webhook so new tags appear automatically.
+
+Note that the repository must be **public** for Packagist to index it.
+
+---
+
+## Related packages
+
+- [`kanopi/wp-core-installer`](https://github.com/kanopi/wp-core-installer) —
+  the Composer plugin that deploys this package into a web root.

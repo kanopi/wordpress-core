@@ -1,262 +1,126 @@
 version: 2.1
 
-orbs:
-  gh: circleci/github-cli@2.3
+# Pipeline parameters let you trigger a mirror run from the CircleCI API or UI.
+# See README.md → "Triggering a sync by hand".
+parameters:
+  run_mirror:
+    type: boolean
+    default: false
+    description: "Run the mirror job now"
+  min_version:
+    type: string
+    default: ""
+    description: "Skip tags older than this WordPress version (e.g. 6.0)"
+  only_refs:
+    type: string
+    default: ""
+    description: "Comma-separated upstream refs to mirror (e.g. 6.9.1,6.9-branch)"
+  force:
+    type: boolean
+    default: false
+    description: "Rebuild tags that already exist on the target"
 
 executors:
   default:
     docker:
-      - image: cimg/base:current
+      - image: cimg/python:3.12
+    resource_class: medium
+    environment:
+      TARGET_REPO_SLUG: kanopi/wordpress-core
+      TOOLING_BRANCH: main
+      GIT_TERMINAL_PROMPT: "0"
+  php:
+    docker:
+      - image: cimg/php:8.3
     resource_class: small
 
 commands:
-  setup-git:
-    description: "Configure git for commits and push access"
+  clone-tooling:
+    description: >
+      Clone only the tooling branch. The default CircleCI `checkout` would pull
+      the whole mirror (~690 MB of WordPress history), which this repo does not
+      need in order to run its own scripts.
     steps:
       - run:
-          name: Configure Git
+          name: Clone tooling branch
           command: |
-            git config --global user.email "ci@kanopi.com"
-            git config --global user.name "Kanopi CI"
-
-            # Configure git to use GitHub token for push
-            git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/kanopi/wordpress-core.git
-
-  sync-wordpress-version:
-    description: "Sync a single WordPress version"
-    parameters:
-      version:
-        type: string
-    steps:
-      - run:
-          name: Sync WordPress << parameters.version >>
-          command: |
-            ./scripts/sync-wordpress.sh "<< parameters.version >>" --push
-          no_output_timeout: 10m
+            git clone --depth 1 --single-branch --branch "$TOOLING_BRANCH" \
+              "https://x-access-token:${GITHUB_TOKEN}@github.com/${TARGET_REPO_SLUG}.git" .
 
 jobs:
-  check-and-sync:
-    executor: default
+  lint:
+    executor: php
     steps:
       - checkout
-      - setup-git
       - run:
-          name: Install dependencies
-          command: |
-            sudo apt-get update
-            sudo apt-get install -y jq curl
-
+          name: Install shellcheck
+          command: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
       - run:
-          name: Check for new WordPress versions
-          command: |
-            # Fetch all WordPress tags from GitHub (stable versions)
-            echo "Fetching WordPress versions from GitHub..."
-            WORDPRESS_VERSIONS=$(curl -sL "https://api.github.com/repos/WordPress/WordPress/tags?per_page=100" | \
-              jq -r '.[].name' | \
-              grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' | \
-              sort -V)
-
-            # Also fetch pre-release versions from WordPress.org
-            echo "Fetching pre-release versions from WordPress.org..."
-            PRERELEASE_VERSIONS=$(curl -sL "https://wordpress.org/download/releases/" | \
-              grep -oE 'wordpress-[0-9]+\.[0-9]+(\.[0-9]+)?-(alpha|beta|RC)[0-9]+' | \
-              sed 's/wordpress-//' | \
-              sort -V | uniq || true)
-
-            # Combine all versions
-            ALL_WP_VERSIONS=$(printf '%s\n%s' "$WORDPRESS_VERSIONS" "$PRERELEASE_VERSIONS" | sort -V | uniq)
-
-            # Fetch our existing tags
-            echo "Fetching existing tags..."
-            git fetch --tags
-            OUR_TAGS=$(git tag -l | sort -V)
-
-            # Find versions we don't have (only sync 6.0+)
-            echo "Comparing versions..."
-            NEW_VERSIONS=""
-            for version in $ALL_WP_VERSIONS; do
-              # Normalize version for Composer (6.5 -> 6.5.0, 6.5-beta1 -> 6.5.0-beta1)
-              if [[ "$version" =~ ^([0-9]+)\.([0-9]+)$ ]]; then
-                normalized="${version}.0"
-              elif [[ "$version" =~ ^([0-9]+)\.([0-9]+)-(.+)$ ]]; then
-                normalized="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0-${BASH_REMATCH[3]}"
-              else
-                normalized="$version"
-              fi
-
-              # Check if >= 6.0
-              major=$(echo "$version" | cut -d. -f1)
-              if [[ $major -lt 6 ]]; then
-                continue
-              fi
-
-              # Check if we already have this version
-              if ! echo "$OUR_TAGS" | grep -q "^${normalized}$"; then
-                NEW_VERSIONS="$NEW_VERSIONS $version"
-                echo "New version found: $version (tag: $normalized)"
-              fi
-            done
-
-            if [[ -z "$NEW_VERSIONS" ]]; then
-              echo "No new WordPress versions to sync"
-              echo "export NEW_VERSIONS=''" >> $BASH_ENV
-            else
-              echo "New versions to sync: $NEW_VERSIONS"
-              echo "export NEW_VERSIONS='$NEW_VERSIONS'" >> $BASH_ENV
-            fi
-
+          name: Shellcheck
+          command: shellcheck bin/mirror.sh
       - run:
-          name: Sync new versions
+          name: Byte-compile the composer.json generator
+          command: python3 -m py_compile bin/composer-json.py
+      - run:
+          name: Validate a generated composer.json
           command: |
-            if [[ -z "$NEW_VERSIONS" ]]; then
-              echo "No new versions to sync, skipping"
-              exit 0
-            fi
+            python3 bin/composer-json.py \
+              --package kanopi/wordpress-core \
+              --wp-version 6.9.1 \
+              --php-version 7.2.24 \
+              --installer kanopi/wp-core-installer \
+              --branch-alias 'dev-6.9-branch=6.9.x-dev' \
+              > /tmp/composer.json
+            cd /tmp && composer validate --no-check-all --no-check-lock --strict
 
-            # Fetch all branches
-            git fetch --all
-
-            for version in $NEW_VERSIONS; do
-              echo "========================================"
-              echo "Syncing WordPress $version"
-              echo "========================================"
-
-              # Get branch name (major.minor.x)
-              major_minor=$(echo "$version" | grep -oE '^[0-9]+\.[0-9]+')
-              branch="${major_minor}.x"
-
-              # Checkout or create branch
-              if git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
-                git checkout -B "$branch" "origin/$branch"
-              else
-                git checkout main
-                git checkout -b "$branch"
-              fi
-
-              # Run sync script
-              ./scripts/sync-wordpress.sh "$version" --push || {
-                echo "Failed to sync $version, continuing..."
-                git checkout main
-                continue
-              }
-
-              # Return to main for next iteration
-              git checkout main
-            done
-
-          no_output_timeout: 30m
-
-  sync-single-version:
+  mirror:
     executor: default
-    parameters:
-      version:
-        type: string
-        description: "WordPress version to sync (e.g., 6.4.3)"
-      include_prerelease:
-        type: boolean
-        default: false
-        description: "Include pre-release versions"
     steps:
-      - checkout
-      - setup-git
+      - clone-tooling
       - run:
-          name: Sync WordPress << parameters.version >>
+          name: Mirror WordPress into the target repository
           command: |
-            VERSION="<< parameters.version >>"
+            args=(--push)
 
-            # Get branch name
-            major_minor=$(echo "$VERSION" | grep -oE '^[0-9]+\.[0-9]+')
-            branch="${major_minor}.x"
-
-            # Checkout or create branch
-            git fetch --all --tags
-            if git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
-              git checkout -B "$branch" "origin/$branch"
-            else
-              git checkout main
-              git checkout -b "$branch"
+            min_version="<< pipeline.parameters.min_version >>"
+            if [ -n "$min_version" ]; then
+              args+=(--min-version "$min_version")
             fi
 
-            # Run sync script
-            ./scripts/sync-wordpress.sh "$VERSION" --push
-
-  sync-all-versions:
-    executor: default
-    parameters:
-      min_version:
-        type: string
-        default: "6.0"
-        description: "Minimum WordPress version to sync"
-      include_prerelease:
-        type: boolean
-        default: false
-        description: "Include pre-release versions"
-    steps:
-      - checkout
-      - setup-git
-      - run:
-          name: Fetch all branches and tags
-          command: |
-            git fetch --all --tags
-      - run:
-          name: Sync all WordPress versions
-          command: |
-            ARGS="--min-version << parameters.min_version >> --push"
-            if [[ "<< parameters.include_prerelease >>" == "true" ]]; then
-              ARGS="$ARGS --include-prerelease"
+            only_refs="<< pipeline.parameters.only_refs >>"
+            if [ -n "$only_refs" ]; then
+              args+=(--only "$only_refs")
             fi
-            ./scripts/sync-all-versions.sh $ARGS
-          no_output_timeout: 60m
+
+            if [ "<< pipeline.parameters.force >>" = "true" ]; then
+              args+=(--force)
+            fi
+
+            # The token stays out of the log: mirror.sh redacts credentials
+            # before printing the target URL.
+            export TARGET_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${TARGET_REPO_SLUG}.git"
+            export SOURCE_URL="https://github.com/${TARGET_REPO_SLUG}"
+
+            bin/mirror.sh "${args[@]}"
+          no_output_timeout: 90m
 
 workflows:
-  # Daily check for new WordPress versions
-  daily-sync:
-    triggers:
-      - schedule:
-          cron: "0 6 * * *"  # 6 AM UTC daily
-          filters:
-            branches:
-              only:
-                - main
+  # Runs when a pipeline sets run_mirror=true. That comes from either the
+  # scheduled pipeline configured in the CircleCI UI (Project Settings →
+  # Triggers) or a manual API/UI trigger. Schedules are deliberately NOT
+  # declared here — CircleCI no longer honours cron triggers from config.yml.
+  sync:
+    when: << pipeline.parameters.run_mirror >>
     jobs:
-      - check-and-sync:
+      - mirror:
           context: github-push
 
-  # Manual trigger for syncing a specific version
-  manual-sync-version:
+  # Ordinary pushes to the tooling branch only lint. Pushes to mirrored refs
+  # carry [skip ci] in their commit message and never reach CircleCI.
+  validate:
     when:
       and:
-        - equal: [ true, << pipeline.parameters.sync_version >> ]
+        - not: << pipeline.parameters.run_mirror >>
+        - equal: [main, << pipeline.git.branch >>]
     jobs:
-      - sync-single-version:
-          version: << pipeline.parameters.wordpress_version >>
-          context: github-push
-
-  # Manual trigger for syncing all versions
-  manual-sync-all:
-    when:
-      and:
-        - equal: [ true, << pipeline.parameters.sync_all >> ]
-    jobs:
-      - sync-all-versions:
-          min_version: << pipeline.parameters.min_version >>
-          include_prerelease: << pipeline.parameters.include_prerelease >>
-          context: github-push
-
-# Pipeline parameters for manual triggers
-parameters:
-  sync_version:
-    type: boolean
-    default: false
-  wordpress_version:
-    type: string
-    default: ""
-  sync_all:
-    type: boolean
-    default: false
-  min_version:
-    type: string
-    default: "6.0"
-  include_prerelease:
-    type: boolean
-    default: false
+      - lint
