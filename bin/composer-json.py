@@ -46,7 +46,7 @@ def main():
 
     data = {
         "name": args.package,
-        "description": "WordPress core, mirrored from WordPress/WordPress for Composer.",
+        "description": "WordPress core, mirrored from wordpress.org for Composer.",
         "type": "wordpress-core",
         "license": "GPL-2.0-or-later",
         "homepage": "https://wordpress.org/",

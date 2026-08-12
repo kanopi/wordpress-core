@@ -80,6 +80,10 @@ jobs:
     executor: default
     steps:
       - clone-tooling
+      # Upstream is git://core.git.wordpress.org/ (see bin/mirror.sh), which
+      # speaks TCP port 9418. If this job starts failing at the fetch step with
+      # a connection error, check that the executor's egress allows that port
+      # before assuming upstream is down.
       - run:
           name: Mirror WordPress into the target repository
           command: |

@@ -1,19 +1,30 @@
 #!/usr/bin/env bash
 #
-# Mirror WordPress/WordPress into a Composer-installable package.
+# Mirror WordPress core into a Composer-installable package.
+#
+# The source is wordpress.org's own git mirror of the core build repository
+# (git://core.git.wordpress.org/, the git face of core.svn.wordpress.org).
+# GitHub's WordPress/WordPress mirrors the same SVN repo, but its tag and
+# release-branch sync stalls periodically — in August 2026 it sat five security
+# releases behind, 7.0.4 among them — so we go to the origin instead.
 #
 # Every upstream branch and tag is reproduced here with one extra commit on top
 # that adds composer.json. Upstream history is preserved (the overlay commit's
 # parent is the upstream commit), so this repo is a genuine mirror rather than a
 # rebuild from release tarballs.
 #
-# Refs produced:
+# Refs produced (note the upstream -> published renames):
 #
 #   upstream tag  6.9.1        ->  tag     6.9.1              (Composer: 6.9.1)
-#   upstream      6.9-branch   ->  branch  6.9-branch         (Composer: dev-6.9-branch)
+#   upstream tag  7.0.0        ->  tag     7.0                (Composer: 7.0)
+#   upstream      6.9          ->  branch  6.9-branch         (Composer: dev-6.9-branch)
 #                              ->  branch  6.9.x              (Composer: 6.9.x-dev)
-#   upstream      master       ->  branch  master             (Composer: dev-master)
-#                              ->  branch  7.1.x              (Composer: 7.1.x-dev)
+#   upstream      trunk        ->  branch  master             (Composer: dev-master)
+#                              ->  branch  7.2.x              (Composer: 7.2.x-dev)
+#
+# Published names are deliberately unchanged from when this mirror sourced
+# GitHub, so existing "dev-master", "dev-6.9-branch" and "7.0" constraints keep
+# resolving. See published_branch() and published_tag().
 #
 # The tooling branch (main) is never touched.
 #
@@ -30,14 +41,21 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # --- Configuration (all overridable via environment) -------------------------
 
-UPSTREAM_URL="${UPSTREAM_URL:-https://github.com/WordPress/WordPress.git}"
+UPSTREAM_URL="${UPSTREAM_URL:-git://core.git.wordpress.org/}"
 TARGET_URL="${TARGET_URL:-git@github.com:kanopi/wordpress-core.git}"
 PACKAGE_NAME="${PACKAGE_NAME:-kanopi/wordpress-core}"
 SOURCE_URL="${SOURCE_URL:-https://github.com/kanopi/wordpress-core}"
 TOOLING_BRANCH="${TOOLING_BRANCH:-main}"
-# Upstream carries Dependabot PR branches that are not WordPress series and
-# only add noise to `composer show --all`. Set to "" to mirror them anyway.
-EXCLUDE_BRANCHES="${EXCLUDE_BRANCHES:-^dependabot/}"
+# Branches upstream carries that must not be mirrored:
+#
+#   master   abandoned on core.git.wordpress.org — last touched 2021-11-08 and
+#            still reads $wp_version 5.9-alpha-52035. The live trunk there is
+#            "trunk". Mirroring this would publish 5.9-alpha as dev-master.
+#   fixes-*  one-off core fix branches, not WordPress series.
+#
+# If UPSTREAM_URL is ever pointed back at GitHub, override this — on that mirror
+# "master" IS the live trunk, and "^dependabot/" is what needs excluding.
+EXCLUDE_BRANCHES="${EXCLUDE_BRANCHES:-^(master$|fixes-)}"
 WORKDIR="${WORKDIR:-$ROOT/.mirror}"
 COMMIT_NAME="${COMMIT_NAME:-Kanopi CI}"
 COMMIT_EMAIL="${COMMIT_EMAIL:-ci@kanopi.com}"
@@ -154,9 +172,21 @@ target_head_matches() {
 
 step "Fetching upstream ($UPSTREAM_URL)"
 info "First run clones the full WordPress history (~690 MB) and may take a few minutes."
-git fetch --prune --no-tags upstream \
+# --prune matters after a source switch: refs the previous upstream carried under
+# its own naming (6.9-branch, dependabot/*, tag 6.9) are dropped from the cache,
+# so refs/upstream/* always reflects exactly one upstream.
+if ! git fetch --prune --no-tags upstream \
     '+refs/heads/*:refs/upstream/heads/*' \
-    '+refs/tags/*:refs/upstream/tags/*'
+    '+refs/tags/*:refs/upstream/tags/*'; then
+    err "Fetch from $UPSTREAM_URL failed."
+    case "$UPSTREAM_URL" in
+        git://*)
+            err "git:// speaks TCP port 9418. Confirm outbound access to it —"
+            err "restricted networks and some CI images block that port."
+            ;;
+    esac
+    exit 1
+fi
 
 # --- Ref inspection ----------------------------------------------------------
 
@@ -175,22 +205,63 @@ major_minor() {
     printf '%s' "$1" | grep -oE '^[0-9]+\.[0-9]+' || true
 }
 
+# --- Upstream -> published ref names -----------------------------------------
+#
+# wordpress.org's git mirror names refs differently from GitHub's, which this
+# mirror sourced previously. Renaming on the way out keeps every constraint
+# already published to Packagist resolving:
+#
+#   upstream trunk  ->  master        (so dev-master keeps working, and the
+#                                      GitHub default branch Packagist reads
+#                                      for the package name still exists)
+#   upstream 6.9    ->  6.9-branch    (so dev-6.9-branch keeps working)
+#   upstream 7.0.0  ->  7.0           (WordPress, SVN and every tag already
+#                                      published call it 7.0; Composer
+#                                      normalises 7.0 and 7.0.0 to the same
+#                                      version, so publishing both collides)
+#
+# Anything unrecognised passes through untouched.
+
+published_branch() {
+    local branch="$1"
+    if [[ "$branch" == trunk ]]; then
+        printf 'master'
+    elif [[ "$branch" =~ ^[0-9]+\.[0-9]+$ ]]; then
+        printf '%s-branch' "$branch"
+    else
+        printf '%s' "$branch"
+    fi
+}
+
+published_tag() {
+    if [[ "$1" =~ ^([0-9]+\.[0-9]+)\.0$ ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
+    else
+        printf '%s' "$1"
+    fi
+}
+
 # Which X.Y series does an upstream branch own, if any?
 #
-# Only "X.Y-branch" and "master" earn a Composer-friendly X.Y.x alias. Upstream
-# also carries a few strays (there is a bare "5.3" branch whose version.php
-# reads 5.4) and letting those claim a series ref would collide with the real
-# X.Y-branch and abort the atomic push.
+# Only the trunk branch and a bare "X.Y" series branch earn a Composer-friendly
+# X.Y.x alias. Upstream also carries strays (one-off "fixes-*" branches, and on
+# GitHub a bare "5.3" whose version.php reads 5.4); letting those claim a series
+# ref would collide with the real series branch and abort the atomic push.
+#
+# The master/*-branch arms are kept so the script still works if UPSTREAM_URL is
+# pointed back at GitHub, where those are the trunk and series names.
 series_for_branch() {
     local branch="$1" commit="$2"
-    case "$branch" in
-        master)
-            major_minor "$(read_version_var "$commit" wp_version)" ;;
-        *-branch)
-            major_minor "${branch%-branch}" ;;
-        *)
-            printf '' ;;
-    esac
+    if [[ "$branch" == trunk || "$branch" == master ]]; then
+        major_minor "$(read_version_var "$commit" wp_version)"
+    elif [[ "$branch" =~ ^[0-9]+\.[0-9]+$ ]]; then
+        major_minor "$branch"
+    else
+        case "$branch" in
+            *-branch) major_minor "${branch%-branch}" ;;
+            *)        printf '' ;;
+        esac
+    fi
 }
 
 # Is $1 >= $2, comparing as versions? Empty floor always passes.
@@ -199,13 +270,17 @@ version_ge() {
     printf '%s\n%s\n' "$2" "$1" | sort -V -C
 }
 
+# Does any of the given names appear in --only? Callers pass both the upstream
+# and the published name, so --only 6.9-branch and --only 6.9 both work.
 in_only_list() {
     [[ -z "$ONLY_REFS" ]] && return 0
-    local needle="$1" item
+    local item needle
     local -a only_list
     IFS=',' read -ra only_list <<< "$ONLY_REFS"
     for item in "${only_list[@]}"; do
-        [[ "${item// /}" == "$needle" ]] && return 0
+        for needle in "$@"; do
+            [[ "${item// /}" == "$needle" ]] && return 0
+        done
     done
     return 1
 }
@@ -268,15 +343,17 @@ if [[ "$SKIP_TAGS" == false ]]; then
     step "Planning tags"
     while read -r tag; do
         [[ -z "$tag" ]] && continue
+        pub_tag="$(published_tag "$tag")"
 
-        if ! in_only_list "$tag"; then
+        if ! in_only_list "$tag" "$pub_tag"; then
             SKIPPED_FILTERED=$((SKIPPED_FILTERED + 1)); continue
         fi
-        if ! version_ge "$tag" "$MIN_VERSION"; then
+        if ! version_ge "$pub_tag" "$MIN_VERSION"; then
             SKIPPED_FILTERED=$((SKIPPED_FILTERED + 1)); continue
         fi
-        # Tags are immutable; if we already published one, leave it alone.
-        if [[ "$FORCE" == false ]] && grep -Fxq "$tag" "$TARGET_TAGS"; then
+        # Tags are immutable; if we already published one, leave it alone. The
+        # comparison is on the published name — upstream 7.0.0 is our 7.0.
+        if [[ "$FORCE" == false ]] && grep -Fxq "$pub_tag" "$TARGET_TAGS"; then
             SKIPPED_EXISTING=$((SKIPPED_EXISTING + 1)); continue
         fi
 
@@ -290,11 +367,12 @@ if [[ "$SKIP_BRANCHES" == false ]]; then
     step "Planning branches"
     while read -r branch; do
         [[ -z "$branch" ]] && continue
-        [[ "$branch" == "$TOOLING_BRANCH" ]] && continue
+        pub_branch="$(published_branch "$branch")"
+        [[ "$branch" == "$TOOLING_BRANCH" || "$pub_branch" == "$TOOLING_BRANCH" ]] && continue
         if [[ -n "$EXCLUDE_BRANCHES" ]] && printf '%s' "$branch" | grep -qE "$EXCLUDE_BRANCHES"; then
             SKIPPED_FILTERED=$((SKIPPED_FILTERED + 1)); continue
         fi
-        in_only_list "$branch" || continue
+        in_only_list "$branch" "$pub_branch" || continue
         PLAN_BRANCHES+=("$branch")
     done < <(git for-each-ref --format='%(refname:strip=3)' refs/upstream/heads | sort -V)
 
@@ -305,17 +383,25 @@ if [[ "$DRY_RUN" == true ]]; then
     step "Dry run — no objects written, no refs pushed"
     if [[ ${#PLAN_TAGS[@]} -gt 0 ]]; then
         for tag in "${PLAN_TAGS[@]}"; do
-            echo "  tag     $tag"
+            pub_tag="$(published_tag "$tag")"
+            if [[ "$pub_tag" != "$tag" ]]; then
+                echo "  tag     $tag -> $pub_tag"
+            else
+                echo "  tag     $tag"
+            fi
         done
     fi
     if [[ ${#PLAN_BRANCHES[@]} -gt 0 ]]; then
         for branch in "${PLAN_BRANCHES[@]}"; do
             commit="$(git rev-parse "refs/upstream/heads/$branch")"
+            pub_branch="$(published_branch "$branch")"
             series="$(series_for_branch "$branch" "$commit")"
+            label="$branch"
+            [[ "$pub_branch" != "$branch" ]] && label="$branch -> $pub_branch"
             if [[ -n "$series" ]]; then
-                echo "  branch  $branch  (+ ${series}.x)"
+                echo "  branch  $label  (+ ${series}.x)"
             else
-                echo "  branch  $branch"
+                echo "  branch  $label"
             fi
         done
     fi
@@ -330,10 +416,11 @@ if [[ ${#PLAN_TAGS[@]} -gt 0 ]]; then
     step "Building ${#PLAN_TAGS[@]} tag overlay commit(s)"
     built=0
     for tag in "${PLAN_TAGS[@]}"; do
+        pub_tag="$(published_tag "$tag")"
         upstream_commit="$(git rev-parse "refs/upstream/tags/$tag^{commit}")"
-        overlay="$(build_overlay "$upstream_commit" "$tag" "")"
-        git update-ref "refs/mirror/tags/$tag" "$overlay"
-        PUSH_REFSPECS+=("+refs/mirror/tags/$tag:refs/tags/$tag")
+        overlay="$(build_overlay "$upstream_commit" "$pub_tag" "")"
+        git update-ref "refs/mirror/tags/$pub_tag" "$overlay"
+        PUSH_REFSPECS+=("+refs/mirror/tags/$pub_tag:refs/tags/$pub_tag")
         built=$((built + 1))
         if (( built % 50 == 0 )); then
             info "  … $built/${#PLAN_TAGS[@]}"
@@ -347,6 +434,7 @@ if [[ ${#PLAN_BRANCHES[@]} -gt 0 ]]; then
     CLAIMED_SERIES=" "
     for branch in "${PLAN_BRANCHES[@]}"; do
         refspecs_before=${#PUSH_REFSPECS[@]}
+        pub_branch="$(published_branch "$branch")"
         upstream_commit="$(git rev-parse "refs/upstream/heads/$branch")"
         wp_version="$(read_version_var "$upstream_commit" wp_version)"
         series="$(series_for_branch "$branch" "$upstream_commit")"
@@ -355,7 +443,7 @@ if [[ ${#PLAN_BRANCHES[@]} -gt 0 ]]; then
         # would carry two updates for the same destination and fail outright.
         if [[ -n "$series" ]]; then
             if [[ "$CLAIMED_SERIES" == *" ${series} "* || "${series}.x" == "$TOOLING_BRANCH" ]]; then
-                warn "  ${series}.x already claimed; mirroring $branch verbatim only"
+                warn "  ${series}.x already claimed; mirroring $pub_branch verbatim only"
                 series=""
             else
                 CLAIMED_SERIES="${CLAIMED_SERIES}${series} "
@@ -363,25 +451,26 @@ if [[ ${#PLAN_BRANCHES[@]} -gt 0 ]]; then
         fi
 
         # Composer derives X.Y.x-dev from a branch literally named X.Y.x, but it
-        # cannot guess it from upstream's "X.Y-branch" naming — hence the alias.
+        # cannot guess it from our "X.Y-branch" naming — hence the alias. Keyed
+        # on the published name, which is what consumers actually require.
         alias_spec=""
-        [[ -n "$series" ]] && alias_spec="dev-${branch}=${series}.x-dev"
+        [[ -n "$series" ]] && alias_spec="dev-${pub_branch}=${series}.x-dev"
 
-        overlay="$(build_overlay "$upstream_commit" "${wp_version:-$branch}" "$alias_spec")"
+        overlay="$(build_overlay "$upstream_commit" "${wp_version:-$pub_branch}" "$alias_spec")"
 
-        git update-ref "refs/mirror/heads/$branch" "$overlay"
-        label="$branch"
+        git update-ref "refs/mirror/heads/$pub_branch" "$overlay"
+        label="$pub_branch"
         unchanged=0
 
-        if target_head_matches "$branch" "$overlay"; then
+        if target_head_matches "$pub_branch" "$overlay"; then
             unchanged=$((unchanged + 1))
         else
-            PUSH_REFSPECS+=("+refs/mirror/heads/$branch:refs/heads/$branch")
+            PUSH_REFSPECS+=("+refs/mirror/heads/$pub_branch:refs/heads/$pub_branch")
         fi
 
-        if [[ -n "$series" && "${series}.x" != "$branch" ]]; then
+        if [[ -n "$series" && "${series}.x" != "$pub_branch" ]]; then
             git update-ref "refs/mirror/heads/${series}.x" "$overlay"
-            label="$branch -> ${series}.x"
+            label="$pub_branch -> ${series}.x"
             if target_head_matches "${series}.x" "$overlay"; then
                 unchanged=$((unchanged + 1))
             else

@@ -1,11 +1,26 @@
 # kanopi/wordpress-core
 
-A Composer-installable mirror of [WordPress/WordPress](https://github.com/WordPress/WordPress).
+A Composer-installable mirror of WordPress core, sourced from **wordpress.org's
+own git mirror** of the core build repository —
+`git://core.git.wordpress.org/`, the git face of `core.svn.wordpress.org`.
 
 Every upstream branch and tag is reproduced here with **one extra commit on top
 that adds `composer.json`**. Upstream history is preserved — the overlay
 commit's parent is the real upstream commit — so this is a genuine mirror, not a
 repackaged release tarball.
+
+### Why not GitHub's WordPress/WordPress?
+
+[WordPress/WordPress](https://github.com/WordPress/WordPress) mirrors the same
+SVN repository and was this package's original source, but its tag and
+release-branch sync stalls periodically. In August 2026 it was missing five
+shipped security releases — 6.6.7, 6.7.7, 6.8.8, 6.9.7 and 7.0.4, the last of
+which was the current release — while its trunk kept updating, so the gap was
+easy to miss. Sourcing from wordpress.org removes that dependency.
+
+The content is identical either way: for tag `7.0.3` both sources produce the
+same git tree, `081f811da28b305019584e72f0ce05072ed201cb`. Only commit SHAs
+differ, since the two are independent svn→git conversions.
 
 The package is `type: wordpress-core`, installed by
 [`kanopi/wp-core-installer`](https://github.com/kanopi/wp-core-installer).
@@ -58,17 +73,33 @@ WordPress version is installable.
 
 ```
 main            tooling only: this README, bin/, .circleci/  (never mirrored)
-master          ← GitHub default branch; mirrors upstream master (trunk)
-7.1.x           same commit as master, named so Composer derives 7.1.x-dev
-7.0-branch      verbatim mirror of upstream
+master          ← GitHub default branch; mirrors upstream trunk
+7.2.x           same commit as master, named so Composer derives 7.2.x-dev
+7.0-branch      mirror of upstream's 7.0 series branch
 7.0.x           same commit, Composer-friendly alias
 …               one pair per WordPress series, back to 1.5
 ```
 
-Upstream's `X.Y-branch` naming means nothing to Composer, so each series is
-published twice: once verbatim, and once as `X.Y.x` — which Composer reads as
-`X.Y.x-dev`. Both names point at the same commit. The `X.Y-branch` refs also
-carry an `extra.branch-alias` mapping to `X.Y.x-dev`.
+Neither upstream naming convention means anything to Composer, so each series is
+published twice: once as `X.Y-branch`, and once as `X.Y.x` — which Composer
+reads as `X.Y.x-dev`. Both names point at the same commit. The `X.Y-branch` refs
+also carry an `extra.branch-alias` mapping to `X.Y.x-dev`.
+
+### Upstream → published ref names
+
+wordpress.org names its refs differently from GitHub. The mirror renames them on
+the way out, so every constraint published before the source switch keeps
+resolving:
+
+| Upstream (wordpress.org) | Published here | Why |
+|---|---|---|
+| `trunk` | `master` | keeps `dev-master` working, and Packagist reads the GitHub default branch |
+| `6.9` | `6.9-branch` | keeps `dev-6.9-branch` working |
+| tag `7.0.0` | tag `7.0` | WordPress, SVN and every already-published tag call it `7.0`; Composer normalises both to the same version, so publishing both would collide |
+
+Two upstream branches are never mirrored: `master`, abandoned on
+`core.git.wordpress.org` since 2021 and still reading `5.9-alpha` (the live trunk
+there is `trunk`), and one-off `fixes-*` branches.
 
 ### Pre-releases
 
@@ -122,12 +153,22 @@ doesn't spawn 900 CircleCI pipelines.
 
 | Variable | Default |
 |---|---|
-| `UPSTREAM_URL` | `https://github.com/WordPress/WordPress.git` |
+| `UPSTREAM_URL` | `git://core.git.wordpress.org/` |
 | `TARGET_URL` | `git@github.com:kanopi/wordpress-core.git` |
 | `PACKAGE_NAME` | `kanopi/wordpress-core` |
 | `TOOLING_BRANCH` | `main` — never mirrored over |
-| `EXCLUDE_BRANCHES` | `^dependabot/` — upstream PR branches, skipped as noise |
+| `EXCLUDE_BRANCHES` | `^(master$\|fixes-)` — upstream's dead `master` and one-off fix branches |
 | `WORKDIR` | `./.mirror` |
+
+`git://` speaks TCP port 9418, which some restricted networks and CI images
+block; the script says so explicitly if the fetch fails. wordpress.org's HTTPS
+endpoint for the same repo presents a certificate that does not match the host,
+so it is not a usable fallback — `git svn` against
+`https://core.svn.wordpress.org/` is.
+
+Pointing `UPSTREAM_URL` back at `https://github.com/WordPress/WordPress.git`
+still works, but override `EXCLUDE_BRANCHES` to `^dependabot/` — on that mirror
+`master` is the live trunk, not a dead branch.
 
 ---
 
