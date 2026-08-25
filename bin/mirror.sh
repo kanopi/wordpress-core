@@ -9,9 +9,10 @@
 # releases behind, 7.0.4 among them — so we go to the origin instead.
 #
 # Every upstream branch and tag is reproduced here with one extra commit on top
-# that adds composer.json. Upstream history is preserved (the overlay commit's
-# parent is the upstream commit), so this repo is a genuine mirror rather than a
-# rebuild from release tarballs.
+# that adds composer.json and, where upstream's own branch cut left one behind,
+# removes a nested trunk/ copy of core (see build_overlay). Upstream history is
+# preserved (the overlay commit's parent is the upstream commit), so this repo is
+# a genuine mirror rather than a rebuild from release tarballs.
 #
 # Refs produced (note the upstream -> published renames):
 #
@@ -310,24 +311,68 @@ build_overlay() {
     blob="$(python3 "$COMPOSER_JSON_BIN" "${json_args[@]}" | git hash-object -w --stdin)"
 
     index="$(mktemp "${TMPDIR:-/tmp}/wp-mirror-index.XXXXXX")"
-    GIT_INDEX_FILE="$index" git read-tree "$upstream_commit^{tree}"
+
+    # Drop the nested copy of core that some upstream branch cuts leave behind.
+    #
+    # SVN copies *into* an existing directory rather than becoming it, so a
+    # branch cut can land the trunk copy inside the new branch instead of at its
+    # root. The 7.1 cut did exactly that (core.svn r62363, "Branch 7.1", the one
+    # branch-creation commit in the series that is not an empty commit): it added
+    # 5011 files under trunk/, a full second copy of core frozen at the branch
+    # point (7.1-RC2-63163) that no later commit ever touched, and it rode along
+    # into the 7.1 release tag. wordpress.org's release ZIPs do not carry it, but
+    # a true git mirror of the build repo reproduces it unless we strip it here.
+    #
+    # Core has no legitimate top-level "trunk", so trunk/wp-includes/version.php
+    # is an unambiguous signature of this bug and a safe thing to key on. The
+    # upstream commit is left untouched and is still this overlay's parent, so
+    # history is preserved and the removal shows up in the overlay's own diff.
+    #
+    # "git update-index --force-remove" is not an option here: it calls
+    # setup_work_tree() and dies with "this operation must be run in a work
+    # tree" against the bare object cache. Rebuilding the root tree with mktree
+    # sidesteps that, and since trunk/ is a single top-level entry it is also
+    # O(1) rather than 5011 index removals.
+    local dropped_trunk=false base_tree="$upstream_commit^{tree}"
+    if git cat-file -e "$upstream_commit:trunk/wp-includes/version.php" 2>/dev/null; then
+        base_tree="$(git ls-tree "$upstream_commit^{tree}" \
+            | grep -v $'\ttrunk$' \
+            | git mktree)"
+        dropped_trunk=true
+    fi
+
+    GIT_INDEX_FILE="$index" git read-tree "$base_tree"
     GIT_INDEX_FILE="$index" git update-index --add \
         --cacheinfo "100644,$blob,composer.json"
     tree="$(GIT_INDEX_FILE="$index" git write-tree)"
     rm -f "$index"
 
+    # Fail loudly rather than publish a commit whose message claims a removal
+    # that did not happen. An earlier version of this used update-index
+    # --force-remove, which fails in a bare repo; the error went to stderr, the
+    # overlay was built anyway, and three refs were force-pushed still carrying
+    # trunk/ under a message saying otherwise.
+    if [[ "$dropped_trunk" == true ]] && git cat-file -e "$tree:trunk" 2>/dev/null; then
+        err "trunk/ still present in rebuilt tree for $upstream_commit"
+        return 1
+    fi
+
     commit_date="$(git show -s --format=%cI "$upstream_commit")"
 
     # [skip ci] keeps CircleCI from spawning a pipeline for each of the ~900
     # mirrored refs, none of which carry a .circleci/config.yml.
+    local -a message=(-m "WordPress $label: add composer.json for $PACKAGE_NAME [skip ci]")
+    if [[ "$dropped_trunk" == true ]]; then
+        message+=(-m "Also drops the stray trunk/ copy of core that upstream's branch cut left in this ref.")
+    fi
+
     GIT_AUTHOR_NAME="$COMMIT_NAME" \
     GIT_AUTHOR_EMAIL="$COMMIT_EMAIL" \
     GIT_AUTHOR_DATE="$commit_date" \
     GIT_COMMITTER_NAME="$COMMIT_NAME" \
     GIT_COMMITTER_EMAIL="$COMMIT_EMAIL" \
     GIT_COMMITTER_DATE="$commit_date" \
-    git commit-tree "$tree" -p "$upstream_commit" \
-        -m "WordPress $label: add composer.json for $PACKAGE_NAME [skip ci]"
+    git commit-tree "$tree" -p "$upstream_commit" "${message[@]}"
 }
 
 # --- Plan --------------------------------------------------------------------
