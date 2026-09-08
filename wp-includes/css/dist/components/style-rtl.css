@@ -279,9 +279,7 @@
   font-weight: var(--wpds-typography-font-weight-emphasis, 600);
   margin: 0;
   cursor: var(--wpds-cursor-control, pointer);
-  -webkit-appearance: none;
-     -moz-appearance: none;
-          appearance: none;
+  appearance: none;
   background: none;
   height: 36px;
   align-items: center;
@@ -534,11 +532,6 @@ p + .components-button.is-tertiary {
   outline: none;
   flex-shrink: 0;
 }
-@media (forced-colors: active) {
-  .components-button svg {
-    fill: CanvasText;
-  }
-}
 
 @keyframes components-button__busy-animation {
   0% {
@@ -593,9 +586,6 @@ p + .components-button.is-tertiary {
   outline-offset: var(--wpds-border-width-focus, var(--wp-admin-border-width-focus, 2px));
   border-color: var(--wpds-color-stroke-interactive-neutral, #8d8d8d);
   box-shadow: none;
-}
-.components-checkbox-control__input[type=checkbox]::-moz-placeholder {
-  color: rgba(30, 30, 30, 0.62);
 }
 .components-checkbox-control__input[type=checkbox]::placeholder {
   color: rgba(30, 30, 30, 0.62);
@@ -658,9 +648,7 @@ p + .components-button.is-tertiary {
   vertical-align: top;
   width: var(--checkbox-input-size);
   height: var(--checkbox-input-size);
-  -webkit-appearance: none;
-     -moz-appearance: none;
-          appearance: none;
+  appearance: none;
 }
 @media not (prefers-reduced-motion) {
   .components-checkbox-control__input[type=checkbox] {
@@ -697,7 +685,7 @@ p + .components-button.is-tertiary {
 svg.components-checkbox-control__checked,
 svg.components-checkbox-control__indeterminate {
   --checkmark-size: var(--checkbox-input-size);
-  fill: #fff;
+  color: #fff;
   cursor: var(--wpds-cursor-control, pointer);
   position: absolute;
   right: 50%;
@@ -706,7 +694,6 @@ svg.components-checkbox-control__indeterminate {
   width: var(--checkmark-size);
   height: var(--checkmark-size);
   -webkit-user-select: none;
-     -moz-user-select: none;
           user-select: none;
   pointer-events: none;
 }
@@ -719,7 +706,7 @@ svg.components-checkbox-control__indeterminate {
 
 .components-checkbox-control:has(:disabled) svg.components-checkbox-control__checked,
 .components-checkbox-control:has(:disabled) svg.components-checkbox-control__indeterminate {
-  fill: var(--wp-components-color-gray-400, var(--wpds-color-stroke-interactive-neutral, #8d8d8d));
+  color: var(--wp-components-color-gray-400, var(--wpds-color-stroke-interactive-neutral, #8d8d8d));
 }
 
 .components-checkbox-control__help {
@@ -932,9 +919,6 @@ input.components-combobox-control__input[type=text]:focus {
   outline-offset: var(--wpds-border-width-focus, var(--wp-admin-border-width-focus, 2px));
   border-color: var(--wpds-color-stroke-interactive-neutral, #8d8d8d);
   box-shadow: none;
-}
-.components-combobox-control__suggestions-container::-moz-placeholder {
-  color: rgba(30, 30, 30, 0.62);
 }
 .components-combobox-control__suggestions-container::placeholder {
   color: rgba(30, 30, 30, 0.62);
@@ -1469,9 +1453,6 @@ input.components-combobox-control__input[type=text]:focus {
   outline-offset: var(--wpds-border-width-focus, var(--wp-admin-border-width-focus, 2px));
   border-color: var(--wpds-color-stroke-interactive-neutral, #8d8d8d);
   box-shadow: none;
-}
-.components-form-token-field__input-container::-moz-placeholder {
-  color: rgba(30, 30, 30, 0.62);
 }
 .components-form-token-field__input-container::placeholder {
   color: rgba(30, 30, 30, 0.62);
@@ -2154,8 +2135,8 @@ body.modal-open {
 }
 
 .components-notice {
-  --wp-components-notice-background-color: var(--wpds-color-background-surface-info-weak, #f3f9ff);
-  --wp-components-notice-border-color: var(--wpds-color-stroke-surface-info, #a9c6e7);
+  --wp-components-notice-background-color: var(--wpds-color-background-surface-info-weak, #f8f8f8);
+  --wp-components-notice-border-color: var(--wpds-color-stroke-surface-info, #aac6e5);
   --wp-components-notice-text-color: var(--wpds-color-foreground-content-info, #001b4f);
   box-sizing: border-box;
   display: grid;
@@ -2171,18 +2152,18 @@ body.modal-open {
   line-height: var(--wpds-typography-line-height-sm, 20px);
 }
 .components-notice.is-success {
-  --wp-components-notice-background-color: var(--wpds-color-background-surface-success-weak, #ebffed);
-  --wp-components-notice-border-color: var(--wpds-color-stroke-surface-success, #94d29e);
+  --wp-components-notice-background-color: var(--wpds-color-background-surface-success-weak, #f8f8f8);
+  --wp-components-notice-border-color: var(--wpds-color-stroke-surface-success, #92d19d);
   --wp-components-notice-text-color: var(--wpds-color-foreground-content-success, #002900);
 }
 .components-notice.is-warning {
-  --wp-components-notice-background-color: var(--wpds-color-background-surface-warning-weak, #fff7e1);
-  --wp-components-notice-border-color: var(--wpds-color-stroke-surface-warning, #e1bc7c);
+  --wp-components-notice-background-color: var(--wpds-color-background-surface-warning-weak, #f8f8f8);
+  --wp-components-notice-border-color: var(--wpds-color-stroke-surface-warning, #e1be80);
   --wp-components-notice-text-color: var(--wpds-color-foreground-content-warning, #2e1900);
 }
 .components-notice.is-error {
-  --wp-components-notice-background-color: var(--wpds-color-background-surface-error-weak, #fff6f5);
-  --wp-components-notice-border-color: var(--wpds-color-stroke-surface-error, #dab1aa);
+  --wp-components-notice-background-color: var(--wpds-color-background-surface-error-weak, #f8f8f8);
+  --wp-components-notice-border-color: var(--wpds-color-stroke-surface-error, #dfafa8);
   --wp-components-notice-text-color: var(--wpds-color-foreground-content-error, #470000);
 }
 
@@ -2420,13 +2401,6 @@ body.rtl .components-panel__body-toggle.components-button .dashicons-arrow-right
   margin-left: 4px;
   fill: currentColor;
 }
-@media (forced-colors: active) {
-  .components-placeholder__label > svg,
-  .components-placeholder__label .dashicon,
-  .components-placeholder__label .block-editor-block-icon {
-    fill: CanvasText;
-  }
-}
 .components-placeholder__label:empty {
   display: none;
 }
@@ -2476,9 +2450,6 @@ body.rtl .components-panel__body-toggle.components-button .dashicons-arrow-right
   outline-offset: var(--wpds-border-width-focus, var(--wp-admin-border-width-focus, 2px));
   border-color: var(--wpds-color-stroke-interactive-neutral, #8d8d8d);
   box-shadow: none;
-}
-.components-placeholder__input[type=url]::-moz-placeholder {
-  color: rgba(30, 30, 30, 0.62);
 }
 .components-placeholder__input[type=url]::placeholder {
   color: rgba(30, 30, 30, 0.62);
@@ -2617,7 +2588,6 @@ body.rtl .components-panel__body-toggle.components-button .dashicons-arrow-right
   box-shadow: 0 0 0 1px #ccc, 0 2px 3px rgba(0, 0, 0, 0.05), 0 4px 5px rgba(0, 0, 0, 0.04), 0 12px 12px rgba(0, 0, 0, 0.03), 0 16px 16px rgba(0, 0, 0, 0.02);
   border-radius: 4px;
   box-sizing: border-box;
-  width: -moz-min-content;
   width: min-content;
 }
 .is-alternate .components-popover__content {
@@ -2724,8 +2694,7 @@ body.rtl .components-panel__body-toggle.components-button .dashicons-arrow-right
   display: grid;
   grid-template-columns: auto 1fr;
   grid-template-rows: auto minmax(0, max-content);
-  -moz-column-gap: 8px;
-       column-gap: 8px;
+  column-gap: 8px;
   align-items: center;
 }
 
@@ -2785,9 +2754,7 @@ body.rtl .components-panel__body-toggle.components-button .dashicons-arrow-right
   display: inline-flex;
   margin: 0;
   padding: 0;
-  -webkit-appearance: none;
-     -moz-appearance: none;
-          appearance: none;
+  appearance: none;
 }
 .components-radio-control__input[type=radio]:not(:disabled) {
   cursor: var(--wpds-cursor-control, pointer);
@@ -3048,7 +3015,6 @@ body.lockscroll {
 }
 @media (min-width: 600px) {
   .components-snackbar {
-    width: -moz-fit-content;
     width: fit-content;
   }
 }
@@ -3124,7 +3090,6 @@ body.lockscroll {
   height: 48px !important;
   background: transparent;
   border: none;
-  box-shadow: none;
   cursor: var(--wpds-cursor-control, pointer);
   padding: 3px var(--wpds-dimension-padding-lg, 16px);
   margin-right: 0;
@@ -3139,7 +3104,6 @@ body.lockscroll {
 }
 .components-tab-panel__tabs-item:focus:not(:disabled) {
   position: relative;
-  box-shadow: none;
   outline: none;
 }
 .components-tab-panel__tabs-item::after {
@@ -3168,17 +3132,12 @@ body.lockscroll {
   position: absolute;
   inset: var(--wpds-dimension-padding-md, 12px);
   pointer-events: none;
-  box-shadow: 0 0 0 0 transparent;
   border-radius: var(--wpds-border-radius-sm, 2px);
 }
-@media not (prefers-reduced-motion) {
-  .components-tab-panel__tabs-item::before {
-    transition: box-shadow 0.1s linear;
-  }
-}
 .components-tab-panel__tabs-item:focus-visible::before {
-  box-shadow: 0 0 0 var(--wpds-border-width-focus, var(--wp-admin-border-width-focus, 2px)) var(--wpds-color-stroke-focus, var(--wp-admin-theme-color, #3858e9));
-  outline: 2px solid transparent;
+  outline: var(--wpds-border-width-focus, var(--wp-admin-border-width-focus, 2px)) solid var(--focus-color, var(--wpds-color-stroke-focus, var(--wp-admin-theme-color, #3858e9)));
+  outline-offset: var(--wpds-border-width-focus, var(--wp-admin-border-width-focus, 2px));
+  outline-offset: 0;
 }
 .components-tab-panel__tabs[aria-orientation=vertical] .components-tab-panel__tabs-item {
   border-radius: var(--wpds-border-radius-sm, 2px);
@@ -3191,12 +3150,11 @@ body.lockscroll {
 }
 
 .components-tab-panel__tab-content:focus {
-  box-shadow: none;
   outline: none;
 }
 .components-tab-panel__tab-content:focus-visible {
-  box-shadow: 0 0 0 var(--wpds-border-width-focus, var(--wp-admin-border-width-focus, 2px)) var(--wpds-color-stroke-focus, var(--wp-admin-theme-color, #3858e9));
-  outline: 2px solid transparent;
+  outline: var(--wpds-border-width-focus, var(--wp-admin-border-width-focus, 2px)) solid var(--focus-color, var(--wpds-color-stroke-focus, var(--wp-admin-theme-color, #3858e9)));
+  outline-offset: var(--wpds-border-width-focus, var(--wp-admin-border-width-focus, 2px));
   outline-offset: 0;
 }
 
@@ -3283,9 +3241,6 @@ body.lockscroll {
   border-color: var(--wpds-color-stroke-interactive-neutral, #8d8d8d);
   box-shadow: none;
 }
-.components-text-control__input::-moz-placeholder, .components-text-control__input[type=text]::-moz-placeholder, .components-text-control__input[type=tel]::-moz-placeholder, .components-text-control__input[type=time]::-moz-placeholder, .components-text-control__input[type=url]::-moz-placeholder, .components-text-control__input[type=week]::-moz-placeholder, .components-text-control__input[type=password]::-moz-placeholder, .components-text-control__input[type=color]::-moz-placeholder, .components-text-control__input[type=date]::-moz-placeholder, .components-text-control__input[type=datetime]::-moz-placeholder, .components-text-control__input[type=datetime-local]::-moz-placeholder, .components-text-control__input[type=email]::-moz-placeholder, .components-text-control__input[type=month]::-moz-placeholder, .components-text-control__input[type=number]::-moz-placeholder {
-  color: rgba(30, 30, 30, 0.62);
-}
 .components-text-control__input::placeholder,
 .components-text-control__input[type=text]::placeholder,
 .components-text-control__input[type=tel]::placeholder,
@@ -3319,9 +3274,6 @@ body.lockscroll {
   padding-right: 12px;
   padding-left: 12px;
 }
-.components-text-control__input::-moz-placeholder, .components-text-control__input[type=text]::-moz-placeholder, .components-text-control__input[type=tel]::-moz-placeholder, .components-text-control__input[type=time]::-moz-placeholder, .components-text-control__input[type=url]::-moz-placeholder, .components-text-control__input[type=week]::-moz-placeholder, .components-text-control__input[type=password]::-moz-placeholder, .components-text-control__input[type=color]::-moz-placeholder, .components-text-control__input[type=date]::-moz-placeholder, .components-text-control__input[type=datetime]::-moz-placeholder, .components-text-control__input[type=datetime-local]::-moz-placeholder, .components-text-control__input[type=email]::-moz-placeholder, .components-text-control__input[type=month]::-moz-placeholder, .components-text-control__input[type=number]::-moz-placeholder {
-  color: color-mix(in srgb, var(--wp-components-color-foreground, var(--wpds-color-foreground-content-neutral, #1e1e1e)), transparent 38%);
-}
 .components-text-control__input::placeholder,
 .components-text-control__input[type=text]::placeholder,
 .components-text-control__input[type=tel]::placeholder,
@@ -3350,7 +3302,7 @@ body.lockscroll {
 }
 .components-tip svg {
   align-self: center;
-  fill: #f0b849;
+  color: #f0b849;
   flex-shrink: 0;
   margin-left: 16px;
 }
@@ -3568,26 +3520,16 @@ div.components-toolbar > div + div.has-left-divider::before {
 }
 
 .components-validated-control__wrapper-with-error-delegate:has(input:invalid[data-validity-visible]) .components-validated-control__content-editable [role=textbox], .components-validated-control__wrapper-with-error-delegate:has(select:invalid[data-validity-visible]) .components-input-control__backdrop, .components-validated-control textarea:invalid[data-validity-visible], .components-validated-control:has(:is(input, select):invalid[data-validity-visible]) .components-input-control__backdrop {
-  --focus-color: #cc1818;
+  --focus-color: var(--wpds-color-stroke-interactive-error, #cc1818);
 }
 
-.components-validated-control:has(:is(input, select):invalid[data-validity-visible]) .components-input-control__backdrop {
-  border-color: #cc1818;
-}
-.components-validated-control textarea:invalid[data-validity-visible] {
-  border-color: #cc1818;
+.components-validated-control__wrapper-with-error-delegate:has(input:invalid[data-validity-visible]) .components-validated-control__content-editable [role=textbox], .components-validated-control__wrapper-with-error-delegate:has(select:invalid[data-validity-visible]) .components-input-control__backdrop, .components-validated-control textarea:invalid[data-validity-visible], .components-validated-control:has(:is(input, select):invalid[data-validity-visible]) .components-input-control__backdrop {
+  border-color: var(--wpds-color-stroke-interactive-error, #cc1818);
 }
 
 .components-validated-control__wrapper-with-error-delegate {
   position: relative;
 }
-.components-validated-control__wrapper-with-error-delegate:has(select:invalid[data-validity-visible]) .components-input-control__backdrop {
-  border-color: #cc1818;
-}
-.components-validated-control__wrapper-with-error-delegate:has(input:invalid[data-validity-visible]) .components-validated-control__content-editable [role=textbox] {
-  border-color: #cc1818;
-}
-
 .components-validated-control__error-delegate {
   position: absolute;
   top: 0;

@@ -517,6 +517,56 @@ var wp;
   }
   var get_normalized_comma_separable_default = getNormalizedCommaSeparable;
 
+  // packages/core-data/build-module/utils/set-nested-value.mjs
+  function setNestedValue(object, path, value) {
+    if (!object || typeof object !== "object") {
+      return object;
+    }
+    const normalizedPath = Array.isArray(path) ? path : path.split(".");
+    normalizedPath.reduce((acc, key, idx) => {
+      if (acc[key] === void 0) {
+        if (Number.isInteger(normalizedPath[idx + 1])) {
+          acc[key] = [];
+        } else {
+          acc[key] = {};
+        }
+      }
+      if (idx === normalizedPath.length - 1) {
+        acc[key] = value;
+      }
+      return acc[key];
+    }, object);
+    return object;
+  }
+
+  // packages/core-data/build-module/utils/get-filtered-item.mjs
+  var filteredItemCache = /* @__PURE__ */ new WeakMap();
+  function getFilteredItem(item, _fields) {
+    const fields = get_normalized_comma_separable_default(_fields) ?? [];
+    const fieldsKey = fields.join(",");
+    let itemCache = filteredItemCache.get(item);
+    if (itemCache) {
+      const filtered = itemCache.get(fieldsKey);
+      if (filtered !== void 0) {
+        return filtered;
+      }
+    } else if (item !== null && typeof item === "object") {
+      itemCache = /* @__PURE__ */ new Map();
+      filteredItemCache.set(item, itemCache);
+    }
+    const filteredItem = {};
+    for (let f = 0; f < fields.length; f++) {
+      const field = fields[f].split(".");
+      let value = item;
+      field.forEach((fieldName) => {
+        value = value?.[fieldName];
+      });
+      setNestedValue(filteredItem, field, value);
+    }
+    itemCache?.set(fieldsKey, filteredItem);
+    return filteredItem;
+  }
+
   // packages/core-data/build-module/utils/if-matching-action.mjs
   var ifMatchingAction = (isMatch) => (reducer) => (state, action) => {
     if (state === void 0 || isMatch(action)) {
@@ -555,28 +605,6 @@ var wp;
     };
   }
   var with_weak_map_cache_default = withWeakMapCache;
-
-  // packages/core-data/build-module/utils/set-nested-value.mjs
-  function setNestedValue(object, path, value) {
-    if (!object || typeof object !== "object") {
-      return object;
-    }
-    const normalizedPath = Array.isArray(path) ? path : path.split(".");
-    normalizedPath.reduce((acc, key, idx) => {
-      if (acc[key] === void 0) {
-        if (Number.isInteger(normalizedPath[idx + 1])) {
-          acc[key] = [];
-        } else {
-          acc[key] = {};
-        }
-      }
-      if (idx === normalizedPath.length - 1) {
-        acc[key] = value;
-      }
-      return acc[key];
-    }, object);
-    return object;
-  }
 
   // packages/core-data/build-module/utils/get-nested-value.mjs
   function getNestedValue(object, path, defaultValue) {
@@ -3380,14 +3408,6 @@ var wp;
       supportsPagination: false
     },
     {
-      label: (0, import_i18n.__)("Registered Templates"),
-      name: "registeredTemplate",
-      kind: "root",
-      baseURL: "/wp/v2/registered-templates",
-      key: "id",
-      supportsPagination: false
-    },
-    {
       label: (0, import_i18n.__)("Font Collections"),
       name: "fontCollection",
       kind: "root",
@@ -3511,12 +3531,10 @@ var wp;
         __unstablePrePersist: (persistedRecord, edits) => prePersistPostType(persistedRecord, edits, name, isTemplate),
         __unstable_rest_base: postType.rest_base,
         // The templates controller returns the whole collection and never
-        // paginates. It serves `wp_template_part` always, and `wp_template`
-        // until the template activate experiment moves it to a posts
-        // controller.
-        supportsPagination: window?.__experimentalTemplateActivate ? name !== "wp_template_part" : !isTemplate,
+        // paginates.
+        supportsPagination: !isTemplate,
         getRevisionsUrl: (parentId, revisionId) => `/${namespace}/${postType.rest_base}/${parentId}/revisions${revisionId ? "/" + revisionId : ""}`,
-        revisionKey: isTemplate && !window?.__experimentalTemplateActivate ? "wp_id" : DEFAULT_ENTITY_KEY
+        revisionKey: isTemplate ? "wp_id" : DEFAULT_ENTITY_KEY
       };
       if (!window.__experimentalEnableRealTimeCollaboration) {
         return entity2;
@@ -3767,6 +3785,27 @@ var wp;
       meta: action.meta
     };
   });
+  function removeQueryItems(queryItems, removedItems) {
+    const itemIds = queryItems.itemIds.filter(
+      (itemId) => !removedItems[itemId]
+    );
+    const removedCount = queryItems.itemIds.length - itemIds.length;
+    if (removedCount === 0) {
+      return queryItems;
+    }
+    const nextQueryItems = { ...queryItems, itemIds };
+    if (Number.isFinite(queryItems.meta?.totalItems)) {
+      nextQueryItems.meta = {
+        ...queryItems.meta,
+        totalItems: Math.max(
+          0,
+          queryItems.meta.totalItems - removedCount
+        ),
+        totalPages: null
+      };
+    }
+    return nextQueryItems;
+  }
   var queries = (state = {}, action) => {
     switch (action.type) {
       case "RECEIVE_ITEMS":
@@ -3784,12 +3823,10 @@ var wp;
                 Object.entries(contextQueries).map(
                   ([query, queryItems]) => [
                     query,
-                    {
-                      ...queryItems,
-                      itemIds: queryItems.itemIds.filter(
-                        (queryId) => !removedItems[queryId]
-                      )
-                    }
+                    removeQueryItems(
+                      queryItems,
+                      removedItems
+                    )
                   ]
                 )
               )
@@ -4644,45 +4681,25 @@ var wp;
       (config) => config.kind === kind && config.name === name
     );
   }
-  var getEntityRecord = (0, import_data9.createSelector)(
-    ((state, kind, name, recordId, query) => {
-      logEntityDeprecation(kind, name, "getEntityRecord");
-      const queriedState = state.entities.records?.[kind]?.[name]?.queriedData;
-      if (!queriedState) {
+  var getEntityRecord = ((state, kind, name, recordId, query) => {
+    logEntityDeprecation(kind, name, "getEntityRecord");
+    const queriedState = state.entities.records?.[kind]?.[name]?.queriedData;
+    if (!queriedState) {
+      return void 0;
+    }
+    const context = query?.context ?? "default";
+    if (!query || !query._fields) {
+      if (!queriedState.itemIsComplete[context]?.[recordId]) {
         return void 0;
       }
-      const context = query?.context ?? "default";
-      if (!query || !query._fields) {
-        if (!queriedState.itemIsComplete[context]?.[recordId]) {
-          return void 0;
-        }
-        return queriedState.items[context][recordId];
-      }
-      const item = queriedState.items[context]?.[recordId];
-      if (!item) {
-        return item;
-      }
-      const filteredItem = {};
-      const fields = get_normalized_comma_separable_default(query._fields) ?? [];
-      for (let f = 0; f < fields.length; f++) {
-        const field = fields[f].split(".");
-        let value = item;
-        field.forEach((fieldName) => {
-          value = value?.[fieldName];
-        });
-        setNestedValue(filteredItem, field, value);
-      }
-      return filteredItem;
-    }),
-    (state, kind, name, recordId, query) => {
-      const context = query?.context ?? "default";
-      const queriedState = state.entities.records?.[kind]?.[name]?.queriedData;
-      return [
-        queriedState?.items[context]?.[recordId],
-        queriedState?.itemIsComplete[context]?.[recordId]
-      ];
+      return queriedState.items[context][recordId];
     }
-  );
+    const item = queriedState.items[context]?.[recordId];
+    if (!item) {
+      return item;
+    }
+    return getFilteredItem(item, query._fields);
+  });
   getEntityRecord.__unstableNormalizeArgs = (args) => {
     const newArgs = [...args];
     const recordKey = newArgs?.[2];
@@ -5104,45 +5121,25 @@ var wp;
     }
     return true;
   }
-  var getRevision = (0, import_data9.createSelector)(
-    (state, kind, name, recordKey, revisionKey, query) => {
-      logEntityDeprecation(kind, name, "getRevision");
-      const queriedState = state.entities.records?.[kind]?.[name]?.revisions?.[recordKey];
-      if (!queriedState) {
+  var getRevision = (state, kind, name, recordKey, revisionKey, query) => {
+    logEntityDeprecation(kind, name, "getRevision");
+    const queriedState = state.entities.records?.[kind]?.[name]?.revisions?.[recordKey];
+    if (!queriedState) {
+      return void 0;
+    }
+    const context = query?.context ?? "default";
+    if (!query || !query._fields) {
+      if (!queriedState.itemIsComplete[context]?.[revisionKey]) {
         return void 0;
       }
-      const context = query?.context ?? "default";
-      if (!query || !query._fields) {
-        if (!queriedState.itemIsComplete[context]?.[revisionKey]) {
-          return void 0;
-        }
-        return queriedState.items[context][revisionKey];
-      }
-      const item = queriedState.items[context]?.[revisionKey];
-      if (!item) {
-        return item;
-      }
-      const filteredItem = {};
-      const fields = get_normalized_comma_separable_default(query._fields) ?? [];
-      for (let f = 0; f < fields.length; f++) {
-        const field = fields[f].split(".");
-        let value = item;
-        field.forEach((fieldName) => {
-          value = value?.[fieldName];
-        });
-        setNestedValue(filteredItem, field, value);
-      }
-      return filteredItem;
-    },
-    (state, kind, name, recordKey, revisionKey, query) => {
-      const context = query?.context ?? "default";
-      const queriedState = state.entities.records?.[kind]?.[name]?.revisions?.[recordKey];
-      return [
-        queriedState?.items?.[context]?.[revisionKey],
-        queriedState?.itemIsComplete?.[context]?.[revisionKey]
-      ];
+      return queriedState.items[context][revisionKey];
     }
-  );
+    const item = queriedState.items[context]?.[revisionKey];
+    if (!item) {
+      return item;
+    }
+    return getFilteredItem(item, query._fields);
+  };
 
   // packages/core-data/build-module/actions.mjs
   var actions_exports = {};
@@ -5512,10 +5509,7 @@ var wp;
         recordId
       });
       let hasError = false;
-      let { baseURL } = entityConfig;
-      if (kind === "postType" && name === "wp_template" && (recordId && typeof recordId === "string" && !/^\d+$/.test(recordId) || !window?.__experimentalTemplateActivate)) {
-        baseURL = baseURL.slice(0, baseURL.lastIndexOf("/")) + "/templates";
-      }
+      const { baseURL } = entityConfig;
       try {
         let path = `${baseURL}/${recordId}`;
         if (query) {
@@ -5717,10 +5711,7 @@ var wp;
       let updatedRecord;
       let error;
       let hasError = false;
-      let { baseURL } = entityConfig;
-      if (kind === "postType" && name === "wp_template" && (recordId && typeof recordId === "string" && !/^\d+$/.test(recordId) || !window?.__experimentalTemplateActivate)) {
-        baseURL = baseURL.slice(0, baseURL.lastIndexOf("/")) + "/templates";
-      }
+      const { baseURL } = entityConfig;
       try {
         const path = `${baseURL}${recordId ? "/" + recordId : ""}`;
         const persistedRecord = !isNewRecord ? select5.getRawEntityRecord(kind, name, recordId) : {};
@@ -6607,10 +6598,7 @@ var wp;
           return;
         }
       }
-      let { baseURL } = entityConfig;
-      if (kind === "postType" && name === "wp_template" && (key && typeof key === "string" && !/^\d+$/.test(key) || !window?.__experimentalTemplateActivate)) {
-        baseURL = baseURL.slice(0, baseURL.lastIndexOf("/")) + "/templates";
-      }
+      const { baseURL } = entityConfig;
       const path = (0, import_url6.addQueryArgs)(baseURL + (key ? "/" + key : ""), {
         ...entityConfig.baseURLParams,
         ...query
@@ -6800,11 +6788,7 @@ var wp;
           ].join()
         };
       }
-      let { baseURL } = entityConfig;
-      const { combinedTemplates = true } = query;
-      if (kind === "postType" && name === "wp_template" && combinedTemplates) {
-        baseURL = baseURL.slice(0, baseURL.lastIndexOf("/")) + "/templates";
-      }
+      const { baseURL } = entityConfig;
       const path = (0, import_url6.addQueryArgs)(baseURL, {
         ...entityConfig.baseURLParams,
         ...query
@@ -7183,7 +7167,7 @@ var wp;
       path: (0, import_url6.addQueryArgs)("/wp/v2/templates/lookup", query)
     });
     await resolveSelect2.getEntitiesConfig("postType");
-    const id = window?.__experimentalTemplateActivate ? template?.wp_id || template?.id : template?.id;
+    const id = template?.id;
     registry.batch(() => {
       dispatch3.receiveDefaultTemplateId(query, id || "");
       if (id) {
@@ -7200,9 +7184,6 @@ var wp;
         ]);
       }
     });
-  };
-  getDefaultTemplateId2.shouldInvalidate = (action) => {
-    return action.type === "RECEIVE_ITEMS" && action.kind === "root" && action.name === "site" && !!action.persistedEdits;
   };
   var getRevisions2 = (kind, name, recordKey, query = {}) => async ({ dispatch: dispatch3, resolveSelect: resolveSelect2 }) => {
     const configs = await resolveSelect2.getEntitiesConfig(kind);
@@ -7612,7 +7593,15 @@ var wp;
             [name]: id
           }
         },
-        ...revisionId !== void 0 && { revisionId }
+        ...revisionId !== void 0 && kind && {
+          revision: {
+            ...parent?.revision,
+            [kind]: {
+              ...parent?.revision?.[kind],
+              [name]: revisionId
+            }
+          }
+        }
       }),
       [parent, kind, name, id, revisionId]
     );
@@ -8261,36 +8250,34 @@ var wp;
   // packages/core-data/build-module/hooks/use-entity-prop.mjs
   var import_element7 = __toESM(require_element(), 1);
   var import_data15 = __toESM(require_data(), 1);
+  var REVISION_QUERY = {
+    context: "edit",
+    _fields: "id,date,author,meta,title,excerpt,content.raw"
+  };
   function useEntityProp(kind, name, prop, _id) {
     const providerId = useEntityId(kind, name);
     const id = _id ?? providerId;
     const context = (0, import_element7.useContext)(EntityContext);
-    const revisionId = context?.revisionId;
+    const revisionId = String(id) === String(providerId) ? context?.revision?.[kind]?.[name] : void 0;
     const { value, fullValue } = (0, import_data15.useSelect)(
       (select5) => {
         if (revisionId) {
-          const revisions = select5(STORE_NAME).getRevisions(
+          const revision = select5(STORE_NAME).getRevision(
             kind,
             name,
             id,
-            {
-              per_page: -1,
-              context: "edit",
-              _fields: "id,date,author,meta,title.raw,excerpt.raw,content.raw"
-            }
+            revisionId,
+            REVISION_QUERY
           );
-          const entityConfig = select5(STORE_NAME).getEntityConfig(
-            kind,
-            name
-          );
-          const revKey = entityConfig?.revisionKey || DEFAULT_ENTITY_KEY;
-          const revision = revisions?.find(
-            (r2) => r2[revKey] === revisionId
-          );
-          return revision ? {
-            value: revision[prop]?.raw ?? revision[prop],
-            fullValue: revision[prop]
-          } : {};
+          const propValue = revision?.[prop];
+          if (propValue === void 0) {
+            return {};
+          }
+          const isRawAttribute = propValue !== null && typeof propValue === "object" && "raw" in propValue;
+          return {
+            value: isRawAttribute ? propValue.raw : propValue,
+            fullValue: propValue
+          };
         }
         const { getEntityRecord: getEntityRecord3, getEditedEntityRecord: getEditedEntityRecord3 } = select5(STORE_NAME);
         const record = getEntityRecord3(kind, name, id);

@@ -122,6 +122,12 @@ function useStylesId({ templateId } = {}) {
       ) : null;
       return {
         globalStylesId: coreDataSelect.__experimentalGetCurrentGlobalStylesId(),
+        /*
+         * `styles_id` is not part of the template REST schema, so it
+         * cannot come from the record type. It is read defensively in
+         * case a filtered response carries one; without it the hook
+         * falls back to the global styles ID below.
+         */
         stylesId: template?.styles_id
       };
     },
@@ -645,10 +651,13 @@ function getResolvedValue(ruleValue, tree) {
   }
   const resolvedValue = getResolvedRefValue(ruleValue, tree);
   if (typeof resolvedValue === "object" && resolvedValue !== null && "url" in resolvedValue && resolvedValue?.url) {
-    resolvedValue.url = getResolvedThemeFilePath(
-      resolvedValue.url,
-      tree?._links?.["wp:theme-file"]
-    );
+    return {
+      ...resolvedValue,
+      url: getResolvedThemeFilePath(
+        resolvedValue.url,
+        tree?._links?.["wp:theme-file"]
+      )
+    };
   }
   return resolvedValue;
 }
@@ -2514,6 +2523,9 @@ var import_element = __toESM(require_element(), 1);
 function useUserGlobalStyles(id) {
   const { userGlobalStyles } = (0, import_data3.useSelect)(
     (select2) => {
+      if (id === void 0) {
+        return { userGlobalStyles: void 0 };
+      }
       const { getEntityRecord, getEditedEntityRecord, canUser } = select2(import_core_data2.store);
       const userCanEditGlobalStyles = canUser("update", {
         kind: "root",
@@ -2568,7 +2580,9 @@ var { unlock } = (0, import_private_apis.__dangerousOptInToUnstableAPIsOnlyForCo
 );
 
 // packages/lazy-editor/build-module/hooks/use-editor-settings.mjs
-function useEditorSettings({ stylesId }) {
+function useEditorSettings({
+  stylesId
+}) {
   const { editorSettings, blockTypes } = (0, import_data4.useSelect)(
     (select2) => ({
       editorSettings: unlock(

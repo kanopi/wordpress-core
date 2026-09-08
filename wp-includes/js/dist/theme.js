@@ -3345,21 +3345,16 @@ var wp;
     }
   });
 
+  // packages/theme/node_modules/colorjs.io/src/equals.js
+  function equals(color1, color2) {
+    color1 = getColor(color1);
+    color2 = getColor(color2);
+    return color1.space === color2.space && color1.alpha === color2.alpha && color1.coords.every((c, i) => c === color2.coords[i]);
+  }
+
   // packages/theme/node_modules/colorjs.io/src/luminance.js
   function getLuminance(color) {
     return get(color, [xyz_d65_default, "y"]);
-  }
-
-  // packages/theme/node_modules/colorjs.io/src/contrast/WCAG21.js
-  function contrastWCAG21(color1, color2) {
-    color1 = getColor(color1);
-    color2 = getColor(color2);
-    let Y1 = Math.max(getLuminance(color1), 0);
-    let Y2 = Math.max(getLuminance(color2), 0);
-    if (Y2 > Y1) {
-      [Y1, Y2] = [Y2, Y1];
-    }
-    return (Y1 + 0.05) / (Y2 + 0.05);
   }
 
   // packages/theme/node_modules/colorjs.io/src/spaces/hsl.js
@@ -3597,7 +3592,12 @@ var wp;
       "background-interactive-neutral-strong-disabled"
     ],
     "bg-surface4": ["background-interactive-neutral-weak-active"],
-    "bg-surface3": ["background-surface-neutral-strong"],
+    "bg-surface3": [
+      "background-interactive-neutral",
+      "background-interactive-neutral-active",
+      "background-interactive-neutral-disabled",
+      "background-surface-neutral-strong"
+    ],
     "bg-fgSurface4": [
       "foreground-content-neutral",
       "foreground-interactive-neutral",
@@ -3657,14 +3657,36 @@ var wp;
 
   // packages/theme/build-module/color-ramps/lib/color-utils.mjs
   var ALLOWED_SEED_COLOR_SPACES = [srgb_default];
+  var objectLuminanceCache = /* @__PURE__ */ new WeakMap();
   function getColorString(color) {
     ColorSpace.register(srgb_default);
     const rgbRounded = serialize(to(color, srgb_default));
     return serialize(rgbRounded, { format: "hex" });
   }
   function getContrast(colorA, colorB) {
-    ColorSpace.register(srgb_default);
-    return contrastWCAG21(colorA, colorB);
+    return getContrastFromLuminances(
+      getRelativeLuminance(colorA),
+      getRelativeLuminance(colorB)
+    );
+  }
+  function getRelativeLuminance(color) {
+    if (typeof color === "string") {
+      ColorSpace.register(srgb_default);
+      return Math.max(getLuminance(color), 0);
+    }
+    const cachedLuminance = objectLuminanceCache.get(color);
+    if (cachedLuminance && equals(cachedLuminance.color, color)) {
+      return cachedLuminance.luminance;
+    }
+    const luminance = Math.max(getLuminance(color), 0);
+    objectLuminanceCache.set(color, {
+      color: clone(color),
+      luminance
+    });
+    return luminance;
+  }
+  function getContrastFromLuminances(first, second) {
+    return first > second ? (first + 0.05) / (second + 0.05) : (second + 0.05) / (first + 0.05);
   }
   function assertValidSeedColor(seed) {
     ALLOWED_SEED_COLOR_SPACES.forEach(
@@ -3855,7 +3877,6 @@ var wp;
     const gamut = options.gamut ?? srgb_default;
     const alpha = options.alpha ?? 0.65;
     const carry = options.carry ?? 0.5;
-    const cUpperBound = options.cUpperBound ?? 0.45;
     const radiusLight = options.radiusLight ?? 0.2;
     const radiusDark = options.radiusDark ?? 0.2;
     const kLight = options.kLight ?? 0.85;
@@ -3877,12 +3898,11 @@ var wp;
       }
     }
     const lSeed = clamp01(get(seed, [oklch_default, "l"]));
-    const cmaxSeed = getCachedMaxChromaAtLH(lSeed, hSeed, gamut, cUpperBound);
+    const cmaxSeed = getCachedMaxChromaAtLH(lSeed, hSeed, gamut);
     const cmaxTarget = getCachedMaxChromaAtLH(
       clamp01(lTarget),
       hSeed,
-      gamut,
-      cUpperBound
+      gamut
     );
     let seedRelative = 0;
     const denom = cmaxSeed > 0 ? cmaxSeed : 1e-6;
@@ -3930,25 +3950,26 @@ var wp;
     const w = raisedCosine(u > 1 ? 1 : u);
     return 1 - (1 - opts.kDark) * w;
   }
+  var MAX_CHROMA = 0.45;
   var maxChromaCache = /* @__PURE__ */ new Map();
-  function keyMax(l, h, gamut, cap) {
-    const lq = quantize(l, 0.05);
-    const hq = quantize(normalizeHue(h), 10);
-    const cq = quantize(cap, 0.05);
-    return `${gamut}|L:${lq}|H:${hq}|cap:${cq}`;
-  }
   function quantize(x, step) {
     const k = Math.round(x / step);
     return k * step;
   }
-  function getCachedMaxChromaAtLH(l, h, gamutSpace, cap) {
-    const gamut = gamutSpace.id;
-    const key = keyMax(l, h, gamut, cap);
+  function getCachedMaxChromaAtLH(l, h, gamutSpace) {
+    const lQuantized = quantize(l, 0.05);
+    const hQuantized = quantize(normalizeHue(h), 10);
+    const key = `${gamutSpace.id}|L:${lQuantized}|H:${hQuantized}`;
     const hit = maxChromaCache.get(key);
     if (typeof hit === "number") {
       return hit;
     }
-    const computed = maxInGamutChromaAtLH(l, h, gamutSpace, cap);
+    const computed = maxInGamutChromaAtLH(
+      lQuantized,
+      hQuantized,
+      gamutSpace,
+      MAX_CHROMA
+    );
     maxChromaCache.set(key, computed);
     return computed;
   }
@@ -4560,6 +4581,26 @@ var wp;
   // packages/theme/build-module/semantic-color-contrast-pairs.mjs
   var MINIMUM_TEXT_CONTRAST = 4.5;
   var SEMANTIC_COLOR_CONTRAST_PAIRS = [
+    {
+      background: "background.interactive.neutral",
+      foreground: "foreground.interactive.neutral"
+    },
+    {
+      background: "background.interactive.neutral",
+      foreground: "foreground.interactive.neutral-weak"
+    },
+    {
+      background: "background.interactive.neutral-active",
+      foreground: "foreground.interactive.neutral"
+    },
+    {
+      background: "background.interactive.neutral-active",
+      foreground: "foreground.interactive.neutral-weak"
+    },
+    {
+      background: "background.interactive.neutral-weak-active",
+      foreground: "foreground.interactive.neutral-active"
+    },
     {
       background: "background.surface.neutral",
       foreground: "foreground.content.neutral"
