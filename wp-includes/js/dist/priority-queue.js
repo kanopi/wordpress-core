@@ -1,4 +1,3 @@
-(function() {
 "use strict";
 var wp;
 (wp ||= {}).priorityQueue = (() => {
@@ -292,6 +291,4 @@ var wp;
     };
   };
   return __toCommonJS(index_exports);
-})();
-(window.wp ||= {}).priorityQueue = wp.priorityQueue;
 })();

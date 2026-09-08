@@ -1,4 +1,3 @@
-(function() {
 "use strict";
 var wp;
 (wp ||= {}).preferences = (() => {
@@ -573,6 +572,4 @@ var wp;
     PreferencesModalTabs
   });
   return __toCommonJS(index_exports);
-})();
-(window.wp ||= {}).preferences = wp.preferences;
 })();

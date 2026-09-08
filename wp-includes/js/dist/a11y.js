@@ -1,4 +1,3 @@
-(function() {
 "use strict";
 var wp;
 (wp ||= {}).a11y = (() => {
@@ -154,6 +153,4 @@ var wp;
   }
   (0, import_dom_ready.default)(setup);
   return __toCommonJS(index_exports);
-})();
-(window.wp ||= {}).a11y = wp.a11y;
 })();

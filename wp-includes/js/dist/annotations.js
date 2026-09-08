@@ -1,4 +1,3 @@
-(function() {
 "use strict";
 var wp;
 (wp ||= {}).annotations = (() => {
@@ -468,6 +467,4 @@ var wp;
     addAnnotationClassName
   );
   return __toCommonJS(index_exports);
-})();
-(window.wp ||= {}).annotations = wp.annotations;
 })();

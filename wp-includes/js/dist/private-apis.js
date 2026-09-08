@@ -1,4 +1,3 @@
-(function() {
 "use strict";
 var wp;
 (wp ||= {}).privateApis = (() => {
@@ -115,6 +114,4 @@ var wp;
   var lockedData = /* @__PURE__ */ new WeakMap();
   var __private = /* @__PURE__ */ Symbol("Private API ID");
   return __toCommonJS(index_exports);
-})();
-(window.wp ||= {}).privateApis = wp.privateApis;
 })();

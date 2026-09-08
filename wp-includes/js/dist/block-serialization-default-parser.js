@@ -1,4 +1,3 @@
-(function() {
 "use strict";
 var wp;
 (wp ||= {}).blockSerializationDefaultParser = (() => {
@@ -226,6 +225,4 @@ var wp;
     output.push(block);
   }
   return __toCommonJS(index_exports);
-})();
-(window.wp ||= {}).blockSerializationDefaultParser = wp.blockSerializationDefaultParser;
 })();

@@ -1,4 +1,3 @@
-(function() {
 "use strict";
 var wp;
 (wp ||= {}).url = (() => {
@@ -877,6 +876,4 @@ var wp;
     return url.replace(/^http:/, "https:");
   }
   return __toCommonJS(index_exports);
-})();
-(window.wp ||= {}).url = wp.url;
 })();

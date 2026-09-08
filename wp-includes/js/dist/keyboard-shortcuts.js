@@ -1,4 +1,3 @@
-(function() {
 "use strict";
 var wp;
 (wp ||= {}).keyboardShortcuts = (() => {
@@ -301,6 +300,4 @@ var wp;
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Provider, { value: keyboardShortcuts, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ...props, onKeyDown }) });
   }
   return __toCommonJS(index_exports);
-})();
-(window.wp ||= {}).keyboardShortcuts = wp.keyboardShortcuts;
 })();

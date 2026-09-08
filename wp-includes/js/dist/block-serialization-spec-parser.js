@@ -1,4 +1,3 @@
-(function() {
 "use strict";
 var wp;
 (wp ||= {}).blockSerializationSpecParser = (() => {
@@ -1529,6 +1528,4 @@ var wp;
     }
   });
   return require_parser();
-})();
-(window.wp ||= {}).blockSerializationSpecParser = wp.blockSerializationSpecParser;
 })();

@@ -1,4 +1,3 @@
-(function() {
 "use strict";
 var wp;
 (wp ||= {}).reduxRoutine = (() => {
@@ -725,5 +724,3 @@ is-plain-object/dist/is-plain-object.mjs:
    *)
 */
 if (typeof wp.reduxRoutine === 'object' && wp.reduxRoutine.default) { wp.reduxRoutine = wp.reduxRoutine.default; }
-(window.wp ||= {}).reduxRoutine = wp.reduxRoutine;
-})();

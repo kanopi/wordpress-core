@@ -1,4 +1,3 @@
-(function() {
 "use strict";
 var wp;
 (wp ||= {}).hooks = (() => {
@@ -373,6 +372,4 @@ var wp;
     filters
   } = defaultHooks;
   return __toCommonJS(index_exports);
-})();
-(window.wp ||= {}).hooks = wp.hooks;
 })();

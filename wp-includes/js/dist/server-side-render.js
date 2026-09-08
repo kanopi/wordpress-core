@@ -1,4 +1,3 @@
-(function() {
 "use strict";
 var wp;
 (wp ||= {}).serverSideRender = (() => {
@@ -314,5 +313,3 @@ var wp;
   return __toCommonJS(index_exports);
 })();
 if (typeof wp.serverSideRender === 'object' && wp.serverSideRender.default) { wp.serverSideRender = wp.serverSideRender.default; }
-(window.wp ||= {}).serverSideRender = wp.serverSideRender;
-})();

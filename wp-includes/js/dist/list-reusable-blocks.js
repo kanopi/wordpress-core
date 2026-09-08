@@ -1,4 +1,3 @@
-(function() {
 "use strict";
 var wp;
 (wp ||= {}).listReusableBlocks = (() => {
@@ -366,6 +365,4 @@ var wp;
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(import_element2.StrictMode, { children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(import_dropdown_default, { onUpload: showNotice }) })
     );
   });
-})();
-(window.wp ||= {}).listReusableBlocks = wp.listReusableBlocks;
 })();
